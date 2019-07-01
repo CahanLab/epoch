@@ -80,7 +80,7 @@ plot(rd3, col = getPalette(length(unique(grps)))[grps2], asp = 1, pch = 16, cex=
 lines(curves, lwd = 2, col='black')
 ```
 
-<img src="img/heatmap_slingshot_T1.png">
+<img src="img/slingshot_T1.png">
 
 ### find genes that have temporally regulated expression
 ```R
