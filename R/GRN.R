@@ -142,3 +142,15 @@ plotRegulon <- function(
 
 
 
+plotPairs <- function(
+  expMat,
+  tf,
+  target
+){
+  pt = 1:nrow(expMat)
+  xdat = data.frame(pt = pt, expr = c(expMat[,tf], expMat[,target]), type = c(rep("TF", nrow(expMat)), rep("Target", nrow(expMat))))
+  ggplot(xdat, aes(x=pt, y=expr, col=type)) +
+  geom_line() + geom_point() + theme_bw()
+}
+
+
