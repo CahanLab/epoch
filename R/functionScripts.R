@@ -5,7 +5,7 @@
 # scale is for whether or not the user wants the data scaled (Default FALSE)
 # ... used for scale method for model.use, vars.to.regress, etc 
 
-normScaleData= function(exprMat, rowSamp=TRUE, sFact=10000, normMeth="LogNormalize",scale=FALSE, ...){
+normScaleData= function(exprMat, rowSamp=TRUE, sFact=10000, normMeth="LogNormalize",scale=TRUE, ...){
   library(Seurat)
   expr=exprMat
   if (rowSamp==TRUE){
@@ -16,7 +16,7 @@ normScaleData= function(exprMat, rowSamp=TRUE, sFact=10000, normMeth="LogNormali
     norm=ScaleData(norm, ...)
   }
   if (rowSamp==TRUE){
-    t(norm)
+    t(as.matrix(norm))
   } else {
   norm
   }
@@ -101,9 +101,3 @@ getDtwScore= function(pTf, pTrgt,...){
   res[2]=dtw(-1*pTrgt, pTf,... )$normalizedDistance;
   res;
 }
-
-
-
-
-
-
