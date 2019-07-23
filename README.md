@@ -7,12 +7,31 @@ warpNet: reconstruct GRNs from scRNA-Seq data useing trajectory inference and dy
 
 ### Data
 
-This data is unpublished data from our lab. It is of muscle development at e12.5. It has already been normalized, and the varying genes have been identified.
+This data is unpublished data from our lab. It is of muscle development at e12.5. It has already been normalized, and the varying genes have been identified. It has also been clustered, and analyzed with RNA Velocity (Velocyto). Here is what the data look like after applying diffusion map:
+
+<img src="img/musclePCA_072219.png">
+
+And here is RNA Velocity result:
+
+<img src="img/muscleVelocyto_072219.png">
+
+And here is the ordering of the cells based on diffusion pseudotime (dpt):
+
+<img src="img/muscleDPT_072219.png">
+
+Now, let's use warpNet to reconstruct the GRNs that underpin this trajectory.
+
 
 ### Walk thru
 
 #### Set up
 ```R
+
+library(igraph)
+library(qgraph)
+library(loomR)
+library(gam)
+
 library(devtools)
 install_github("pcahan1/singleCellNet")
 
@@ -21,21 +40,9 @@ library(singleCellNet)
 install_github("pcahan1/warpnet")
 library(warpnet)
 
+library(minet)
 
 mydate<-utils_myDate()
-
-library(rgl)
-library(loomR)
-library(slingshot)
-library(destiny)
-library(RColorBrewer)
-library(gam)
-library(pheatmap)
-library(magick)
-library(reshape2)
-library(ggplot2)
-library(tidyverse)
-
 
 ```
 
@@ -45,101 +52,82 @@ library(tidyverse)
 pathToWarpNet = "../"
 mmTFs<-utils_loadObject( paste0(pathToWarpNet, "data/mmTFs.rda") )
 
-list12<-loadLoomExpUMAP( paste0(pathToWarpNet, "data/e12_Muscle_vgenes_052919.loom", xname='leiden'))
+list12<-loadLoomExpUMAP( paste0(pathToWarpNet, "data/adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
 expDat<-list12[['expDat']]
 sampTab<-list12[['sampTab']] # holds the clustering and pca/umap info
 
-grps<-as.vector(sampTab$stage_louvain)
+grps<-as.vector(sampTab$cluster)
 names(grps)<-as.vector(sampTab$cell_name)
-
-dim(expDat)
-[1] 2123  262
 ```
 
-### SlingShot trajectory inference
+### find dynamically expressed genes
 ```R
 
 # PCA was done in scanpy/python and stored in sampTab
-rd3 <- cbind(PC1 = sampTab$pc1, PC2 = sampTab$pc2)
+system.time(xdyn <- findDynGenes(expDat, sampTab, c("0","1")))
 
-grps2 = rep(1, length(grps))
-i<-1
-for(grp in unique(grps)){
-  cat(i,"\n")
-  grps2[which(grps==grp)] <- i
-  i<-i+1
-}
-
-rownames(rd3) = colnames(expDat)
-lineages <- getLineages(rd3, grps, start.clus=c('1'), end.clus=c('2')) # I know this from expression of muscle genes
-curves <- getCurves(lineages, extend='n')
-
-getPalette = colorRampPalette(brewer.pal(2, "Paired"))
-
-plot(rd3, col = getPalette(length(unique(grps)))[grps2], asp = 1, pch = 16, cex=.5)
-lines(curves, lwd = 2, col='black')
+starting gammma...
+   user  system elapsed 
+ 14.195   1.693  15.972
 ```
 
-<img src="img/slingshot_1.png">
+Smooth expression
+```R
+ccells = xdyn$cells
+system.time(expSmoothed <- grnKsmooth(expDat, ccells))
+  user  system elapsed 
+  0.832   0.013   0.850 
 
-### find genes that have temporally regulated expression
+ dim(expSmoothed)
+[1] 2074  262
+```
+
+Cluster genes into epochs
 ```R
 
-ptimes <- slingPseudotime(curves)
-
-t1<-ptimes[,1]
-
-maxExp = apply(expDat, 1, max)
-good = names(which(maxExp>2))
-mywhich = function(vect, t=0){ length(which(vect>t)) }
-
-ccount = apply(expDat[good,], 1, mywhich, t=.5)
-good2 = names(which(ccount>10))
-
-
-# fit a GAM with a loess term for pseudotime
-system.time(gpC1 <-gamFit(expDat[good2,], rownames(expDat), t1))
-  
-tgA <- names(sort(gpC1, decreasing = FALSE))[1:50]
-ord1 = sort(t1)
-
-hm_ti(expDat[tgA,names(ord1)],genes=tgA, grps[names(ord1)], cRow=T, toScale=T, fontsize_row=6)
+geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='kmeans')
+gdfForHM = as.data.frame(geneDF[,"epoch"])
+rownames(gdfForHM) = rownames(geneDF)
+hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, toScale=TRUE)
 ```
 
-<img src="img/heatmap_slingshot_T1.png">
+<img src="img/heatmapDynGenes_072219.png">
 
-### Limit to Transcription factors
+### Reconstruct GRN
 ```R
-tgA_500 <- names(sort(gpC1, decreasing = FALSE))[1:500]
-tTfs_A<-intersect(tgA_500, mmTFs)
-hm_ti(expDat[tTfs_A,names(ord1)],genes=tTfs_A, grps[names(ord1)], cRow=T, toScale=T, fontsize_row=6)
+system.time(grnDF <- reconstructGRN(expSmoothed, mmTFs, zThresh=4))
+   user  system elapsed 
+  2.599   0.158   2.786 
 
-
-xTFs<-tTfs_A[1:25]
-hm_ti(expDat[xTFs,names(ord1)],genes=xTFs, grps[names(ord1)], cRow=T, toScale=T, fontsize_row=6, limits=c(0,7))
+dim(grnDF)
+[1] 8582    4
 ```
-<img src="img/heatmap_slingshot_TFs_T1.png">
 
 
-Now walk thru Michael's code
+Score TFs per epoch
 
-I broke things so smoothing and fft are separate
 ```R
-xdat2 = t(expDat)
-system.time(smDat <- grnSSF(xdat2, order(ptimes),BW=0.025))
-plotRegulon(smDat[['ffTed']], "Myod1", c("Myog","Tnnt3","Tnnc1", "Ttn"), ntrim=20)
+topTFs = pickExemplars(geneDF, grnDF, topX=5)
+topTFs
+$`2`
+[1] "Ssrp1" "Pcna"  "Tfap4" "Hmga2" "H2afz"
+
+$`3`
+[1] "Myod1"  "Zbtb18" "Mef2a"  "Casz1"  "Mef2d" 
+
+$`1`
+[1] "Mef2c" "Sox6"  "Smyd1" "Tbx2"  "Xbp1" 
 ```
 
-<img src="img/regulon_1.png">
 
+### Plot these + top 5 positive regulons
+```R
+iG_x = ig_exemplars(grnDF, geneDF, topTFs, topX=5) 
+x2 = ig_convertMedium(iG_x, vScale=2)
+e = get.edgelist(x2, names=FALSE)
+l <- qgraph.layout.fruchtermanreingold(e,vcount=vcount(x2))
+plot(x2, layout=l)
+```
 
-
-
-
- 
-
-
-
-
-
+<img src="img/smallGRN_072219.png">
 

@@ -1,5 +1,36 @@
 # some custom functions that aren't in any other packages
 
+loadLoomExpDiffMap<-function# load a loom object containing expression data
+(path,
+  cellNameCol='obs_names',
+  xname='leiden',
+  has_dpt_groups=TRUE
+  ){
+  lfile <- connect(filename = path)
+  geneNames<-lfile[["row_attrs"]][["var_names"]][]
+  cellNames<-lfile[["col_attrs"]][["obs_names"]][]
+  expMat<- t(lfile[["matrix"]][1:length(cellNames),])
+  rownames(expMat)<-geneNames
+  colnames(expMat)<-cellNames
+  
+  cluster <- lfile[['col_attrs']][[xname]][]
+
+  pseudotime <- lfile[['col_attrs']][["dpt_pseudotime"]][]
+  dpt_groups <- cluster
+  if(has_dpt_groups){
+    dpt_groups <- lfile[['col_attrs']][["dpt_groups"]][]
+  }
+  dpt_order <- lfile[['col_attrs']][["dpt_order"]][]
+
+  sampTab <- data.frame(cell_name=cellNames, cluster = cluster,  pseudotime= pseudotime, dpt_groups = dpt_groups, dpt_order = dpt_order )
+  
+  lfile$close_all()
+  rownames(sampTab) = as.vector(sampTab$cell_name)
+  list(expDat = expMat, sampTab = sampTab)
+}
+
+
+
 loadLoomExpUMAP<-function# load a loom object containing expression data
 (path,
   cellNameCol='obs_names',
