@@ -20,7 +20,9 @@ findDynGenes = function(expDat, sampTab, path){
   for(grp in path){
     ids = c(ids, as.vector(sampTab[sampTab$dpt_groups==grp,]$cell_name))
   }
-
+  #assumes cell_name is rownames of sampTab and colnames of expDat
+  sampTab = sampTab[ids,]
+  expDat = expDat[,ids]
 
   t1 = sampTab$pseudotime
   names(t1) = as.vector(sampTab$cell_name)
@@ -327,6 +329,9 @@ ig_tabToIgraph<-function#
   iG;
 }
 
+findTop <- function(vect, topX=10){
+  mean(order(vect, decreasing=T)[1:topX])
+}
 
 
 #' cluster and order genes
@@ -343,6 +348,7 @@ ig_tabToIgraph<-function#
 #'
 caoGenes<-function(
   expSmooth,
+  expDat, # for alt peakTimes
   dynRes,
   k=3,
   pThresh=0.01,
@@ -390,7 +396,10 @@ caoGenes<-function(
 
     # find max peak
     genesPeakTimes = apply(expSmooth[genes,], 1, which.max)
-
+    # the expdat won't have been pruned ordered
+    expDat = expDat[,colnames(expSmooth)]
+    ### genesPeakTimesAlt = apply(expDat[genes,], 1, which.max)
+    genesPeakTimesRaw = apply(expDat[genes,], 1, findTop)
 
     ### peakTime = names(sort(gemeakTime))
 
@@ -416,9 +425,14 @@ caoGenes<-function(
       cat(clu,"\n")
       cgenes = names(which(geneMods==clu))
       ptX = genesPeakTimes[cgenes]
+      ptX_raw = genesPeakTimesRaw[cgenes]
       genesOrdered = names(sort(ptX))
 
-      tmpAns<-data.frame(gene = genesOrdered, peakTime = ptX, epoch = clu)
+      ### tmpAns<-data.frame(gene = genesOrdered, peakTime = ptX, peakTimeRaw = ptX_raw, epoch = clu)
+    
+      tmpAns<-data.frame(gene = genesOrdered, peakTime = ptX[genesOrdered], peakTimeRaw = ptX_raw[genesOrdered], epoch = clu)
+
+
       rownames(tmpAns)<-genesOrdered
       ans<-rbind(ans, tmpAns)
     }
@@ -441,7 +455,8 @@ caoGenes<-function(
 pickExemplars<-function(
   geneDF,
   grnTab,
-  topX=3
+  topX=3,
+  type='zscore'
   ){
 
   tfs = unique(as.vector(grnTab$TF))
@@ -453,14 +468,104 @@ pickExemplars<-function(
     eGeneDF = geneDF[geneDF$epoch==epoch,]
 
     eTFs = intersect(tfs, as.vector(eGeneDF$gene))
-    tmpScores = unlist(lapply(eTFs, scoreTF, geneDF=eGeneDF, grnTab=grnTab))
-    names(tmpScores) = eTFs
-    ans[[epoch]] = names(sort(tmpScores, decreasing=T))[1:topX]
+    if(length(eTFs)>0){
+      if(type=='zscore'){
+        tmpScores = unlist(lapply(eTFs, scoreTF, geneDF=eGeneDF, grnTab=grnTab))
+      }
+      else{
+        tmpScores = unlist(lapply(eTFs, scoreTFweight, geneDF=eGeneDF, grnTab=grnTab))
+      }
+      names(tmpScores) = eTFs
+      ans[[epoch]] = names(sort(tmpScores, decreasing=T))[1:topX]
+    }
+    else{
+      ans[[epoch]] <- c()
+    }
   }
   ans
 }
 
 
+# compute the consistency * normalized distance between a TF and a TG
+conNormDist2 <-function(
+  grnTab,
+  geneDF,
+  tf,
+  tg,
+  maxDist
+  ){
+
+  PkT = geneDF[tf,]$peakTimeRaw - geneDF[tg,]$peakTimeRaw
+  regDir = grnTab[grnTab$TF==tf & grnTab$TG==tg,]$corr
+  conDir = 1
+  
+  if( (regDir < 0) & (PkT < 0) ){
+    conDir = -1
+  }
+
+  if( (regDir > 0) & (PkT > 0) ){
+    conDir = -1
+  }
+  conDir * (abs(PkT)/maxDist )
+}
+
+# compute the consistency * normalized distance between a TF and a TG
+conNormDist <-function(
+  grnTab,
+  geneDF,
+  maxDist
+  ){
+
+  tf = as.vector(grnTab[2])
+  tg = as.vector(grnTab[1])
+
+   ### cat(tf, " ", tg,"\n")
+  PkT = geneDF[tf,]$peakTimeRaw - geneDF[tg,]$peakTimeRaw
+  regDir = grnTab[4]
+  conDir = 1
+  
+  if( (regDir < 0) & (PkT < 0) ){
+    conDir = -1
+  }
+
+  if( (regDir > 0) & (PkT > 0) ){
+    conDir = -1
+  }
+  conDir * (abs(PkT)/maxDist )
+}
+
+
+
+distScore <- function(vect, trxLag = 0.05, maxNeg = - 0.2){
+
+#   -2 * (vect-trxLag)**2 + 1
+
+  tmp = dnorm(vect, mean=trxLag, sd = trxLag*2)
+  tmp = tmp/max(tmp)
+  tmp[which(vect< maxNeg)] <- 0
+  tmp
+
+
+}
+
+grnDistScores <-function(
+  grnTab,
+  geneDF,
+  maxDist
+  ){
+
+  normDist = rep(0, nrow(grnTab))
+#   weightAdj = rep(1, nrow(grnTab))
+
+
+    normDist = apply( grnTab, 1, conNormDist, geneDF=geneDF, maxDist=maxDist)
+  
+  weightAdj = distScore(normDist)
+
+  grnTab <- cbind(grnTab, normDist=normDist)
+  grnTab <- cbind(grnTab, weightAdj = weightAdj)
+  grnTab
+}
 
 scoreTF <- function(
   TF,
@@ -487,6 +592,91 @@ scoreTF <- function(
 }
 
 
+scoreTFweight <- function(
+  TF,
+  geneDF,
+  grnTab){
+
+  grnX = grnTab[grnTab$TF==TF,]
+  # assumes no duplocate rows
+  rownames(grnX) = as.vector(grnX$TG)
+
+  epoch = as.vector(geneDF[geneDF$gene == TF,]$epoch[1])
+  epochGenes = as.vector(geneDF[geneDF$epoch == epoch,]$gene)
+ ## outScore = median(grnX$zscore) + nrow(grnX)
+  outScore = sum(grnX$adjWeight * grnX$corr)
+
+  cgenes = intersect(epochGenes, rownames(grnX))
+  grnIn = grnX[cgenes,]
+  ###inScore = median(grnIn$zscore) + nrow(grnIn)
+  sum(grnIn$adjWeight)# * grnIn$corr)
+
+  sum(grnX$adjWeight)
+}
+
+
+#' reconstruct GRN ala CLR
+#'
+#' give a lot of information for each TF that can be used as a basis for better and more diverse way of selecting TFs
+#'
+#'
+#' @param grnTab expects that addDistWeight has been run 
+#' @param tfs vector of transcription factor names
+#' @param zThresh zscore threshold default 2
+#'
+#' @return data frame of TF TG zscore corr
+#' 
+#' @export
+#'
+
+
+# return a df of TF, epoch, distToStart, distToPrior, distToNext, weightMean, weightTotal
+evalTFs <-function(
+  grnTab, # 
+  geneDF){
+
+
+  allTFs = unique(as.vector(grnTab$TF))
+
+  vect_TFs = rep("", length(allTFs))
+  vect_n_TFs = rep(0, length(allTFs))
+  vect_epochs = rep("", length(allTFs))
+  vect_dt_start = rep(0, length(allTFs))
+  vect_weightTotal = rep(0, length(allTFs))
+  vect_weightMean = rep(0, length(allTFs))
+
+  epochs = unique(geneDF$epoch)
+  nTFs = list()
+  for(epoch in epochs){
+    eGeneDF = geneDF[geneDF$epoch==epoch,]
+    nTFs[[epoch]] = length(intersect(rownames(eGeneDF), allTFs))
+  }
+
+
+  for(i in seq(length(allTFs))){
+    tf = allTFs[i]
+    vect_TFs[i] = tf
+    grnX = grnTab[grnTab$TF==tf,]
+    # assumes no duplocate rows
+    rownames(grnX) = as.vector(grnX$TG)
+
+    epoch = as.vector(geneDF[geneDF$gene == tf,]$epoch[1])
+    vect_epochs[i] = epoch
+    vect_n_TFs[i] = nTFs[[epoch]]
+    vect_weightTotal[i] = sum(grnX$adjWeight)
+    vect_weightMean[i]  = mean(grnX$adjWeight)
+
+    eGeneDF = geneDF[geneDF$epoch==epoch,]
+    vect_dt_start[i] = which(rownames(eGeneDF)==tf)
+  }
+
+  ans = data.frame(TF = vect_TFs, num_TFs = vect_n_TFs, epoch=vect_epochs, distToStart = vect_dt_start, weightTotal = vect_weightTotal, weightMean = vect_weightMean)
+  rownames(ans) = vect_TFs
+  ans
+}
+
+
+
 #' reconstruct GRN ala CLR
 #'
 #' reconstruct GRN ala CLR uses minet
@@ -505,7 +695,7 @@ reconstructGRN <- function(
   tfs,
   zThresh=2){
 
-  ttDat = t(testSm)
+  ttDat = t(expSm)
   mim <- build.mim(ttDat,estimator="pearson")
   xnet <- clr(mim)
   xcorr = cor(ttDat)
@@ -514,11 +704,36 @@ reconstructGRN <- function(
   xnet = xnet[,tfsI]
   xcorr = xcorr[,tfsI]
   cn_extractRegsDF(xnet, xcorr, rownames(expSm), zThresh)
+
 }
 
 
+#' add dist and weight
+#'
+#' add dist and weight to GRN
+#'
+#'
+#' @param grnTab grn table
+#' @param geneDF from running caoGenes
+#' @param ncells number of cells
+#' @param maxNeg threshold for setting adjWeight to 0 
+#'
+#' @return data frame with normDist and adjWeight added
+#' 
+#' @export
+#'
+addDistWeight<-function(
+  grnTab,
+  geneDF,
+  ncells, 
+  maxNeg = -0.2){
 
-
+    normDists  = apply(grnTab, 1, conNormDist, geneDF=geneDF, maxDist=ncells)
+    distScores = distScore(normDists, maxNeg = maxNeg)
+    grnTab<-cbind(grnTab, adjWeight = grnTab$zscore * distScores)
+    grnTab<-cbind(grnTab, normDist = normDists)
+    grnTab
+}
 
 
 
