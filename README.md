@@ -2,10 +2,10 @@
 gene regulatory network reconstruction from scRNA-Seq using dynamic time warp
 
 
-### Introduction
+## Introduction
 warpNet: reconstruct GRNs from scRNA-Seq data useing trajectory inference and dynamic time warp.
 
-### Data
+## Data
 
 This data is unpublished data from our lab. It is of muscle development at e12.5. It has already been normalized, and the varying genes have been identified. It has also been clustered, and analyzed with RNA Velocity (Velocyto). Here is what the data look like after applying diffusion map:
 
@@ -24,7 +24,7 @@ Now, let's use warpNet to reconstruct the GRNs that underpin this trajectory.
 
 ### Walk thru
 
-#### Set up
+## Set up
 ```R
 
 library(igraph)
@@ -46,7 +46,7 @@ mydate<-utils_myDate()
 
 ```
 
-### Load data
+## Load data
 ```R
 # Data is in the R package data folder
 pathToWarpNet = "../"
@@ -60,7 +60,7 @@ grps<-as.vector(sampTab$cluster)
 names(grps)<-as.vector(sampTab$cell_name)
 ```
 
-### find dynamically expressed genes
+## Find dynamically expressed genes
 ```R
 
 # PCA was done in scanpy/python and stored in sampTab
@@ -71,7 +71,7 @@ starting gammma...
  14.195   1.693  15.972
 ```
 
-Smooth expression
+## Smooth expression
 ```R
 ccells = xdyn$cells
 system.time(expSmoothed <- grnKsmooth(expDat, ccells))
@@ -82,7 +82,7 @@ system.time(expSmoothed <- grnKsmooth(expDat, ccells))
 [1] 2074  262
 ```
 
-Cluster genes into epochs
+## Cluster genes into epochs
 ```R
 
 geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='kmeans')
@@ -93,8 +93,8 @@ hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, toScale=TRUE)
 
 <img src="img/heatmapDynGenes_072219.png">
 
-### Reconstruct GRN
-## NB: only using dynamically expressed genes for GRN
+## Reconstruct GRN
+ NB: only using dynamically expressed genes for GRN
 ```R
 system.time(grnDF <- reconstructGRN(expSmoothed[rownames(geneDF),], mmTFs, zThresh=3))
    user  system elapsed 
@@ -104,7 +104,7 @@ dim(grnDF)
 [1] 1803    4
 ```
 
-### Add PT-based weight to GRN
+## Add PT-based weight to GRN
 
 normDist is difference in peakTimes between TF and TG. Negative if the sign of the difference is inconsistent with predicted regulatory influence based on CLR network (from pearson)
 ```R
@@ -120,8 +120,8 @@ system.time(grnDF <- addDistWeight(grnDF, geneDF, ncells = ncol(expSmoothed), ma
 
 ```
 
-### Need a function that will give a lot of information for each TF that can be used as a basis for better and more diverse way of selecting TFs
-## Here is a start to do so
+## Need a function that will give a lot of information for each TF that can be used as a basis for better and more diverse way of selecting TFs
+Here is a start to do so
 ```R
 tfTab = evalTFs(grnDF, geneDF)
 
@@ -140,7 +140,7 @@ Prox1         Prox1      25     3         141    27.47881   2.498073
 ```
 
 
-Score TFs per epoch
+## Score TFs per epoch
 
 ```R
  pickExemplars(  geneDF,grnDF, topX=5, type='weight')
@@ -155,7 +155,7 @@ $`3`
 ```
 
 
-### Plot these + top 5 positive regulons
+## Plot these + top 5 positive regulons
 ```R
 iG_x = ig_exemplars(grnDF, geneDF, topTFs, topX=5) 
 x2 = ig_convertMedium(iG_x, vScale=2)
