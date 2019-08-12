@@ -113,10 +113,10 @@ reconstructGRN=function(expSmthOrd, thresh, rowSamp=TRUE){
   if (rowSamp==FALSE){
     exp=t(exp)
   }
-  w= matrix(0, nrow(exp), nrow(exp))
-  for (i in 1:nrow(exp)){
-    for (j in 1:nrow(exp)){
-      score=getDtwScore(exp[i,], exp[j,]);
+  w= matrix(0, ncol(exp), ncol(exp))
+  for (i in 1:ncol(exp)){
+    for (j in 1:ncol(exp)){
+      score=getDtwScore(exp[,i], exp[,j]);
       w[i,j]= score[[1]]
     }
   }
