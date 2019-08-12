@@ -116,12 +116,21 @@ reconstructGRN=function(expSmthOrd, thresh, rowSamp=TRUE){
   w= matrix(0, nrow(exp), nrow(exp))
   for (i in 1:nrow(exp)){
     for (j in 1:nrow(exp)){
-      w[i,j]= getDtwScore(exp[i,], exp[j,])
+      score=getDtwScore(exp[i,], exp[j,]);
+      w[i,j]= score[[1]]
     }
   }
+  diag(w)=0; 
   w[w>thresh]=0;
-  w[w<=thresh]=1;
+  w[w<=thresh & w!=0]=1;
   w=nem::transitive.reduction(w);
   w;
 }
+
+
+
+
+
+
+
 
