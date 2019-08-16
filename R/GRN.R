@@ -356,7 +356,7 @@ caoGenes<-function(
 
   # Find dyn genes
   genes = dynRes$genes
-  genes = names( genes[genes<pThresh] )
+  genes = names( genes[which(genes<pThresh)] )
   if(length(genes)==0){
     cat("no dynamic genes\n")
     ans = data.frame()
@@ -365,7 +365,7 @@ caoGenes<-function(
 
 
     value <- t(scale(t(expSmooth[genes,])))
-
+    cat("A\n")
     # cluster
     ###genedist = utils_myDist(expSmooth[genes,])
 
@@ -396,10 +396,12 @@ caoGenes<-function(
 
     # find max peak
     genesPeakTimes = apply(expSmooth[genes,], 1, which.max)
+    cat("B\n")
     # the expdat won't have been pruned ordered
     expDat = expDat[,colnames(expSmooth)]
     ### genesPeakTimesAlt = apply(expDat[genes,], 1, which.max)
     genesPeakTimesRaw = apply(expDat[genes,], 1, findTop)
+    cat("C\n")
 
     ### peakTime = names(sort(gemeakTime))
 
@@ -667,7 +669,11 @@ evalTFs <-function(
     vect_weightMean[i]  = mean(grnX$adjWeight)
 
     eGeneDF = geneDF[geneDF$epoch==epoch,]
-    vect_dt_start[i] = which(rownames(eGeneDF)==tf)
+    ##eTFs = intersect(rownames(eGeneDF),allTFs) 
+    ##eTfDF = eGeneDF[eTFs,]
+
+    ##vect_dt_start[i] = which(rownames(eTfDF)==tf)
+    vect_dt_start[i] = which(rownames( eGeneDF)==tf)
   }
 
   ans = data.frame(TF = vect_TFs, num_TFs = vect_n_TFs, epoch=vect_epochs, distToStart = vect_dt_start, weightTotal = vect_weightTotal, weightMean = vect_weightMean)
