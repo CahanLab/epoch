@@ -4,7 +4,7 @@
 # normMeth is method of normalziation- logNormalize, CLR or RC (Default "LogNormalize")
 # scale is for whether or not the user wants the data scaled (Default FALSE)
 # ... used for scale method for model.use, vars.to.regress, etc 
-#' @export
+
 normScaleData= function(exprMat, rowSamp=TRUE, sFact=10000, normMeth="LogNormalize",scale=TRUE, ...){
   library(Seurat)
   expr=exprMat
@@ -29,7 +29,6 @@ normScaleData= function(exprMat, rowSamp=TRUE, sFact=10000, normMeth="LogNormali
 # pcaComp is number of PCA components to use (Default 3)
 # ... allows for passing arguments such as cluster labels and start.clus and end.clus
 # if known to slingshot and aid in TI
-#' @export
 getPsuedoScore= function (exprMat, rowSamp=TRUE, lowDim=NULL, pcaComp=3,...){
   library(slingshot)
   expr=exprMat
@@ -59,7 +58,6 @@ getPsuedoScore= function (exprMat, rowSamp=TRUE, lowDim=NULL, pcaComp=3,...){
 # geneExpr is the gene Expression values for a particular gene corresponding to he pseudotime
 # bw is kernel banwidth use. Should be adjusted in relation to pseudotime range (Defualt 10)
 # output is a two column vector with pseudocodore and value of gene at that point after smoothing
-#' @export
 kernelSmoothData= function(pseudoScore, geneExpr, bw=10){
   library(stats)
   res=ksmooth(pseudoScore, geneExpr, kernel="normal", bandwidth = bw);
@@ -73,7 +71,6 @@ kernelSmoothData= function(pseudoScore, geneExpr, bw=10){
 # lowDim allows user to input custom lower dim. embedding of data to use for clustering
 # numClus is number of centers to use if kmeans method is chosen (Default 5)
 # output is a vector with n cluster ids 1..n for each cell
-#' @export
 clusterData=function(exprMat, rowSamp=TRUE, clusMeth="mclust", pcaComp=3, lowDim=NULL, numClus=5){
   expr=exprMat
   if (rowSamp==FALSE){
@@ -97,7 +94,6 @@ clusterData=function(exprMat, rowSamp=TRUE, clusMeth="mclust", pcaComp=3, lowDim
 # pTf is potential Tf expression level (ordered by pseudotime score)
 # pTrgt is potenital target expression level (ordered by pseudotime score)
 # ... used for additional parameters specified for DTW 
-#' @export
 getDtwScore= function(pTf, pTrgt,...){
   res=list(0,0)
   library(dtw)
@@ -105,3 +101,36 @@ getDtwScore= function(pTf, pTrgt,...){
   res[2]=dtw(-1*pTrgt, pTf,... )$normalizedDistance;
   res;
 }
+
+
+# gets all the activatory inetractions and removes redundancy 
+# expSmthOrd- ordered smoothed matrix with only cells in the pseudotime branch 
+# thresh- dtw threshold to count edge
+# rowSamp- rows are cells columns are genes if True
+reconstructGRN=function(expSmthOrd, thresh, rowSamp=TRUE){
+  library(nem)
+  exp=expSmthOrd;
+  if (rowSamp==FALSE){
+    exp=t(exp)
+  }
+  w= matrix(0, ncol(exp), ncol(exp))
+  for (i in 1:ncol(exp)){
+    for (j in 1:ncol(exp)){
+      score=getDtwScore(exp[,i], exp[,j]);
+      w[i,j]= score[[1]]
+    }
+  }
+  diag(w)=0; 
+  w[w>thresh]=0;
+  w[w<=thresh & w!=0]=1;
+  w=nem::transitive.reduction(w);
+  w;
+}
+
+
+
+
+
+
+
+
