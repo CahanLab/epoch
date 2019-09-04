@@ -107,7 +107,7 @@ getDtwScore= function(pTf, pTrgt,...){
 # expSmthOrd- ordered smoothed matrix with only cells in the pseudotime branch 
 # thresh- dtw threshold to count edge
 # rowSamp- rows are cells columns are genes if True
-reconstructGRN=function(expSmthOrd, thresh, rowSamp=TRUE){
+reconstructGRN_MF=function(expSmthOrd, thresh, rowSamp=TRUE){
   library(nem)
   exp=expSmthOrd;
   if (rowSamp==FALSE){

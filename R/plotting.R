@@ -18,6 +18,7 @@ hm_dyn_clust<-function(
   expDat,
   dynRes,
   geneAnn,
+  row_cols,
   limits=c(0,10),
   toScale=FALSE,
   fontsize_row=4){
@@ -63,14 +64,21 @@ hm_dyn_clust<-function(
 
   xcol <- colorRampPalette(rev(brewer.pal(n = 12,name = "Paired")))(length(groupNames))
     names(xcol) <- groupNames
-    anno_colors <- list(group = xcol)
+#    anno_colors <- list(group = xcol)
+    names(row_cols) = unique(as.vector(geneAnn$epoch))
+    anno_colors <- list(group = xcol, epoch=row_cols )
     xx<-data.frame(group=as.factor(grps))
     rownames(xx)<-cells
-   val_col <- colorRampPalette(rev(brewer.pal(n = 12,name = "Spectral")))(25)
-   #val_col <- colorRampPalette(brewer.pal(n = 12,name = "Spectral"))(100)
+
+    geneX = as.data.frame(geneAnn[,"epoch"])
+    rownames(geneX) = rownames(geneAnn)
+    colnames(geneX) = "epoch"
+
+  val_col <- colorRampPalette(rev(brewer.pal(n = 12,name = "Spectral")))(25)
+   
    
       pheatmap(value, cluster_cols = FALSE, cluster_rows= FALSE, color=val_col,
-        show_colnames = FALSE, annotation_row = geneAnn,
+        show_colnames = FALSE, annotation_row = geneX,
         annotation_col = xx,
         annotation_names_col = FALSE, 
         annotation_names_row = FALSE, 

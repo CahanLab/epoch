@@ -40,6 +40,9 @@ library(singleCellNet)
 install_github("pcahan1/warpnet")
 library(warpnet)
 
+# uncomment next line if you opt to use PAM instead of k-means. PAM is recommended
+# library(cluster)
+
 library(minet)
 
 mydate<-utils_myDate()
@@ -51,6 +54,9 @@ mydate<-utils_myDate()
 # Data is in the R package data folder
 pathToWarpNet = "../"
 mmTFs<-utils_loadObject( paste0(pathToWarpNet, "data/mmTFs.rda") )
+
+# remove Pcna and App which are not TFs. Please take note of other non-TFs that you find and create an issue so that we can remove them
+mmTFs <- setdiff(mmTFs, c("App", "Pcna"))
 
 list12<-loadLoomExpUMAP( paste0(pathToWarpNet, "data/adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
 expDat<-list12[['expDat']]
@@ -86,9 +92,17 @@ system.time(expSmoothed <- grnKsmooth(expDat, ccells))
 ```R
 
 geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='kmeans')
+# you can also use pam to cluster the genes (recommended)
+# geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='pam')
+
 gdfForHM = as.data.frame(geneDF[,"epoch"])
 rownames(gdfForHM) = rownames(geneDF)
 hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, toScale=TRUE)
+
+# you can also add colors ...
+# vcols1 = c("#feb24c", "#fc4e2a", "#b10026")
+# hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, row_cols=vcols1, toScale=TRUE)
+
 ```
 
 <img src="img/heatmapDynGenes_072219.png">
@@ -165,4 +179,57 @@ plot(x2, layout=l)
 ```
 
 <img src="img/smallGRN_072419.png">
+
+
+## Here is a way to plot just the MST of the TF-only GRN
+```R
+grnP1 = wn_ig_tabToIgraph(grnDF, geneDF,directed=T)
+newG1 = grnP1
+V(newG1)$size <- 8
+V(newG1)$frame.color <- "white"
+E(newG1)$arrow.mode <- 0
+
+eCols = list("1" = "red", "-1"= "blue")
+E(newG1)$color <- as.vector(unlist(eCols[as.character(E(newG1)$corr)]))
+V(newG1)$color <- vcols1[as.numeric(V(newG1)$epoch)]
+V(newG1)$size <- 4
+
+#now remove all non-regulators
+newG1 = delete.vertices(newG1, V(newG1)[ V(newG1)$type!="Regulator" ] )
+
+mstRes1 = mst(newG1, weights=  E(newG1)$weight, algorithm="prim")
+
+l1 <- layout_with_kk(mstRes1, weights=E(mstRes1)$weight)
+
+# you can resize based on node features
+# V(mstRes1)$size <- (1+ tfTab_P1[V(mstRes1),]$weightTotal/max(tfTab_P1$weightTotal))**2
+
+plot( mstRes1,layout=l1, vertex.label.dist=-0.5,  vertex.label.color="black", vertex.label.cex=0.6)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

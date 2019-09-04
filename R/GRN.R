@@ -281,6 +281,60 @@ cn_extractRegsDF<-function#
 }
 
 
+#' convert a table to an igraph
+#'
+#' convert a table to an igraph. This adds an nEnts vertex attribute to count the number of entities in the sub-net
+#' 
+#' @param grnTab table of TF, TF, maybe zscores, maybe correlations
+#' @param caoGenesRes result of running caoGenesRes data frame with gene peakTime, peakTimeRaw and epoch name
+#' @param simplify false
+#' @param directed FALSE,
+#' @param weights TRUE
+#'
+#' @return iGraph object
+wn_ig_tabToIgraph<-function#
+(grnTab,
+ caoGenesRes,
+ simplify=FALSE,
+ directed=FALSE,
+ weights=TRUE
+){
+  
+  tmpAns<-as.matrix(grnTab[,c("TF", "TG")]);
+  regs<-as.vector(unique(grnTab[,"TF"]));
+  ###cat("Length TFs:", length(regs), "\n");
+  targs<-setdiff( as.vector(grnTab[,"TG"]), regs);
+  
+###  cat("Length TGs:", length(targs), "\n");
+  myRegs<-rep("Regulator", length=length(regs));
+  myTargs<-rep("Target", length=length(targs));
+  
+  types<-c(myRegs, myTargs);
+
+  epochs  = as.vector(caoGenesRes[c(regs,targs),]$epoch)
+  verticies<-data.frame(name=c(regs,targs), label=c(regs,targs), type=types, epoch=epochs);
+
+  
+  ### iG<-graph.data.frame(tmpAns,directed=directed,v=verticies);
+  iG<-igraph::graph_from_data_frame(tmpAns,directed=directed,v=verticies);
+  
+  if(weights){
+    #E(iG)$weight<-grnTab$weight;    
+    ### E(iG)$weight<-grnTab$zscore;   
+    E(iG)$weight<-grnTab$graphDist;  
+    E(iG)$influ<-grnTab$adjWeight;  
+  }
+  if(directed){
+    E(iG)$corr<-sign(grnTab$corr)  
+  }
+  
+  if(simplify){
+    iG<-simplify(iG);
+  }
+  V(iG)$nEnts<-1;
+  iG;
+}
+
 
 #' convert a table to an igraph
 #'
@@ -383,10 +437,15 @@ caoGenes<-function(
         geneMods2 = as.character(geneMods)
       }
       else{
+        if(method=='pam'){
+          geneMods = pam(genedist, k=k, cluster.only=TRUE)
+          geneMods2 = as.character(geneMods)
+        }
+        else{
          geneMods = cutree(geneTree, k=k)
         geneMods2 = as.character(geneMods)
       }
-    }
+    }}
    
     names(geneMods2) = genes
   ###   names(geneMods2) = names(geneMods)
@@ -440,6 +499,17 @@ caoGenes<-function(
     }
 
   }
+
+  # now, re-label the clusters so they make sense
+  epochs = unique(as.vector(ans$epoch))
+  newepochs = as.vector(ans$epoch)
+  new_e = 1
+  for( i in epochs ){ # this should go in order they appear
+      newepochs[ which(ans$epoch == i ) ] = new_e
+      new_e = new_e + 1
+  }
+
+  ans$epoch = newepochs
   ans
 }
 
@@ -646,6 +716,8 @@ evalTFs <-function(
   vect_dt_start = rep(0, length(allTFs))
   vect_weightTotal = rep(0, length(allTFs))
   vect_weightMean = rep(0, length(allTFs))
+  vect_nTargets = rep(0, length(allTFs))
+  vect_peakTimes = rep(0, length(allTFs))
 
   epochs = unique(geneDF$epoch)
   nTFs = list()
@@ -667,6 +739,8 @@ evalTFs <-function(
     vect_n_TFs[i] = nTFs[[epoch]]
     vect_weightTotal[i] = sum(grnX$adjWeight)
     vect_weightMean[i]  = mean(grnX$adjWeight)
+    vect_nTargets[i] = nrow(grnX)
+    vect_peakTimes[i] = as.vector(geneDF[geneDF$gene == tf,]$peakTimeRaw[1])
 
     eGeneDF = geneDF[geneDF$epoch==epoch,]
     ##eTFs = intersect(rownames(eGeneDF),allTFs) 
@@ -674,9 +748,10 @@ evalTFs <-function(
 
     ##vect_dt_start[i] = which(rownames(eTfDF)==tf)
     vect_dt_start[i] = which(rownames( eGeneDF)==tf)
+
   }
 
-  ans = data.frame(TF = vect_TFs, num_TFs = vect_n_TFs, epoch=vect_epochs, distToStart = vect_dt_start, weightTotal = vect_weightTotal, weightMean = vect_weightMean)
+  ans = data.frame(TF = vect_TFs, num_TFs = vect_n_TFs, epoch=vect_epochs, distToStart = vect_dt_start, weightTotal = vect_weightTotal, weightMean = vect_weightMean, ntargets = vect_nTargets, peakTime = vect_peakTimes)
   rownames(ans) = vect_TFs
   ans
 }
@@ -738,12 +813,62 @@ addDistWeight<-function(
     distScores = distScore(normDists, maxNeg = maxNeg)
     grnTab<-cbind(grnTab, adjWeight = grnTab$zscore * distScores)
     grnTab<-cbind(grnTab, normDist = normDists)
+
+    weightToDist = max(grnTab$adjWeight) - grnTab$adjWeight + 0.01
+    grnTab<-cbind(grnTab, graphDist = weightToDist)
     grnTab
 }
 
 
+#' find 'best' TFs from a warpNet run
+#'
+#' just pick 3 TFs, the 1t, the middle, and the last, also allow replacement by n neighbor if higher weight
+#' 
+#' @param tfTab result of running evalTFs
+#' @param nneigh  number of cancdidates per spot to look consider
+#' @param weightType weightTotal or weightMean
+#'
+#' @return vector of TF names
+#' @export
+#'
+pickBestTFs<-function(
+  tfTab, # result of running evalTFs
+  nneigh=3,
+  weightType='weightTotal'
+  ){
+
+  epochs = unique(as.vector(tfTab$epoch))
+
+  ans = vector()
+
+  for(epoch in epochs){
+    cat("EPOCH:", epoch,"\t")
+    xDF = tfTab[tfTab$epoch==epoch,]
+    xDF = xDF[order(xDF$distToStart), ]
+    cat("(size= ",nrow(xDF),")\n")
 
 
+    # boundary cases
+    ntfs = nrow(xDF)
+    if(ntfs <= 3){
+      ans = as.vector(xDF$TF)
+    }
+    else{
+      cat("in kmeans\n")
+      groupedData = kmeans(xDF$distToStart, centers=3)
+      clusters = groupedData$cluster
+
+      cnames = unique(clusters)
+      for(cname in cnames){
+        cat("subcluster ",cname,"\n")
+        subDF = xDF[which(clusters==cname),]
+        cat("size of subckuster: ", nrow(subDF),"\n")
+        ans = append(ans, as.vector(subDF[which.max(subDF$weightTotal),]$TF))
+      }
+    }
+  }
+  unique(ans)
+}
 
 
 
