@@ -108,9 +108,9 @@ hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, toScale=TRUE)
 <img src="img/heatmapDynGenes_072219.png">
 
 ## Reconstruct GRN
- NB: only using dynamically expressed genes for GRN
+ NB: only using un-smoothed data of dynamically expressed genes for GRN
 ```R
-system.time(grnDF <- reconstructGRN(expSmoothed[rownames(geneDF),], mmTFs, zThresh=3))
+system.time(grnDF <- reconstructGRN(expDat[rownames(geneDF),], mmTFs, zThresh=3))
    user  system elapsed 
   0.215   0.023   0.238
 
