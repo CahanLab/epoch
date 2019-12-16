@@ -763,8 +763,9 @@ evalTFs <-function(
 #' reconstruct GRN ala CLR uses minet
 #'
 #'
-#' @param expSm smoothed expression data
+#' @param expDat unsmoothed expression matrix
 #' @param tfs vector of transcription factor names
+#' @param method either 'pearson' or 'MI' to be used in CLR
 #' @param zThresh zscore threshold default 2
 #'
 #' @return data frame of TF TG zscore corr
@@ -772,19 +773,34 @@ evalTFs <-function(
 #' @export
 #'
 reconstructGRN <- function(
-  expSm,
+  expDat,
   tfs,
+  method='pearson',
   zThresh=2){
 
-  ttDat = t(expSm)
-  mim <- build.mim(ttDat,estimator="pearson")
-  xnet <- clr(mim)
-  xcorr = cor(ttDat)
-  tfsI = intersect(tfs, colnames(ttDat))
+  if (method=='MI'){
+    ttDat = t(expDat)
+    mim <- build.mim(as.data.frame(ttDat),estimator="mi.empirical",disc="equalwidth")
+    xnet <- clr(mim)
+    xcorr = cor(ttDat)
+    tfsI = intersect(tfs, colnames(ttDat))
 
-  xnet = xnet[,tfsI]
-  xcorr = xcorr[,tfsI]
-  cn_extractRegsDF(xnet, xcorr, rownames(expSm), zThresh)
+    xnet = xnet[,tfsI]
+    xcorr = xcorr[,tfsI]
+    cn_extractRegsDF(xnet, xcorr, rownames(expDat), zThresh)
+
+  }else{
+    ttDat = t(expDat)
+    mim <- build.mim(ttDat,estimator="pearson")
+    xnet <- clr(mim)
+    xcorr = cor(ttDat)
+    tfsI = intersect(tfs, colnames(ttDat))
+
+    xnet = xnet[,tfsI]
+    xcorr = xcorr[,tfsI]
+    cn_extractRegsDF(xnet, xcorr, rownames(expDat), zThresh)
+  }
+
 
 }
 
