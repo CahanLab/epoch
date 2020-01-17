@@ -107,6 +107,7 @@ getGRNMat = function(expressionMatrix, movingInterval, delay, threshold){
 #' @param expDat  expression matrix
 #' @param cells sample table that includes "cell_name"  "pseudotime" "group"     
 #' @param BW bandwith for kernel smoother
+#' @param npoints n.points parameter for kernel smoother
 #'
 #' @return smoothed matrix
 #' 
@@ -125,8 +126,8 @@ grnKsmooth<-function(
    
    ans = matrix(0, nrow=nrow(expDat), ncol=ncol(expDat))
    for(i in seq(nrow(expDat))){
-      yy = ksmooth(t1, expDat[i,], kernel="normal", bandwidth = BW)
-     ans[i,] = yy$y
+      yy = ksmooth(t1, expDat[i,], kernel="normal", bandwidth = BW, n.points=ncol(expDat))
+      ans[i,] = yy$y
    }
    rownames(ans) = rownames(expDat)
    colnames(ans) = colnames(expDat)
