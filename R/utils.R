@@ -1,12 +1,48 @@
 # some custom functions that aren't in any other packages
 
+loadLoomExpDiffMap_UMAP<-function# load a loom object containing expression data
+(path,
+  cellNameCol='obs_names',
+  xname='leiden',
+  has_dpt_groups=TRUE,
+  has_dm = TRUE
+  ){
+  lfile <- connect(filename = path, skip.validate=TRUE)
+  geneNames<-lfile[["row_attrs"]][["var_names"]][]
+  cellNames<-lfile[["col_attrs"]][["obs_names"]][]
+  expMat<- t(lfile[["matrix"]][1:length(cellNames),])
+  rownames(expMat)<-geneNames
+  colnames(expMat)<-cellNames
+  
+  cluster <- lfile[['col_attrs']][[xname]][]
+
+  pseudotime <- lfile[['col_attrs']][["dpt_pseudotime"]][]
+  dpt_groups <- cluster
+  if(has_dpt_groups){
+    dpt_groups <- lfile[['col_attrs']][["dpt_groups"]][]
+  }
+  if(has_dm){
+    dm1 <- lfile[['col_attrs']][["dm1"]][]
+    dm2 <- lfile[['col_attrs']][["dm2"]][]
+    dm3 <- lfile[['col_attrs']][["dm3"]][]
+  }
+  umap1 <- lfile[['col_attrs']][["UMAP1"]][]
+  umap2 <- lfile[['col_attrs']][["UMAP2"]][]
+
+  sampTab <- data.frame(cell_name=cellNames, cluster = cluster,  pseudotime= pseudotime, dpt_groups = dpt_groups, umap1=umap1, umap2=umap2, dm1=dm1, dm2=dm2, dm3=dm3)
+  
+  lfile$close_all()
+  rownames(sampTab) = as.vector(sampTab$cell_name)
+  list(expDat = expMat, sampTab = sampTab)
+}
+
 loadLoomExpDiffMap<-function# load a loom object containing expression data
 (path,
   cellNameCol='obs_names',
   xname='leiden',
   has_dpt_groups=TRUE
   ){
-  lfile <- connect(filename = path)
+  lfile <- connect(filename = path, skip.validate=TRUE)
   geneNames<-lfile[["row_attrs"]][["var_names"]][]
   cellNames<-lfile[["col_attrs"]][["obs_names"]][]
   expMat<- t(lfile[["matrix"]][1:length(cellNames),])
@@ -30,14 +66,13 @@ loadLoomExpDiffMap<-function# load a loom object containing expression data
 }
 
 
-
 loadLoomExpUMAP<-function# load a loom object containing expression data
 (path,
   cellNameCol='obs_names',
   xname='louvain',
   phase=TRUE
   ){
-  lfile <- connect(filename = path)
+  lfile <- connect(filename = path, skip.validate=TRUE)
   geneNames<-lfile[["row_attrs"]][["var_names"]][]
   cellNames<-lfile[["col_attrs"]][["obs_names"]][]
   expMat<- t(lfile[["matrix"]][1:length(cellNames),])
