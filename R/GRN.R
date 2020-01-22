@@ -1104,19 +1104,19 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, zThresh=0)
     grnDF <- addDistWeight(grnDF, geneDF, ncells = ncol(expSmoothed), maxNeg= -0.2)
     xnet_pt<-acast(grnDF,TF~TG,value.var="adjWeight")
-    xnet_pt[is.na(enet_pt)]<-0
-    xnet_pt<-t(enet_pt)
+    xnet_pt[is.na(xnet_pt)]<-0
+    xnet_pt<-t(xnet_pt)
 
     # CLR MI on all genes + PT weighting
     print("CLR-MI-pt")
-    ccells = xdyn$cells
-    expSmoothed <- grnKsmooth(expDat, ccells)
+    #ccells = xdyn$cells
+    #expSmoothed <- grnKsmooth(expDat, ccells)
     geneDF = caoGenes(expSmoothed, expDat, xdyn, k=3, pThresh=1000, method='kmeans')
     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, method="MI",zThresh=0)
     grnDF <- addDistWeight(grnDF, geneDF, ncells = ncol(expSmoothed), maxNeg= -0.2)
     xnet_mi_pt<-acast(grnDF,TF~TG,value.var="adjWeight")
-    xnet_mi_pt[is.na(enet_pt)]<-0
-    xnet_mi_pt<-t(enet_pt)
+    xnet_mi_pt[is.na(xnet_mi_pt)]<-0
+    xnet_mi_pt<-t(xnet_mi_pt)
 
     # GENIE3 on dyn genes
     print("GENIE3-dyn")
@@ -1130,8 +1130,8 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     geneDF = caoGenes(expSmoothed, expDat, xdyn, k=3, pThresh=0.01, method='kmeans')
     grnDF <- addDistWeight(grnDF, geneDF, ncells = ncol(expSmoothed), maxNeg= -0.2)
     gnet_dyn_pt<-acast(grnDF,TF~TG,value.var="adjWeight")
-    gnet_dyn_pt[is.na(enet_pt)]<-0
-    gnet_dyn_pt<-t(enet_pt)
+    gnet_dyn_pt[is.na(gnet_dyn_pt)]<-0
+    gnet_dyn_pt<-t(gnet_dyn_pt)
 
     res<-list(enet=enet, enet_mi=enet_mi, enet_mi_pt=enet_mi_pt, enet_pt=enet_pt, xnet=xnet, xnet_mi=xnet_mi, xnet_mi_pt=xnet_mi_pt, xnet_pt=xnet_pt, gnet=gnet, gnet_dyn=gnet_dyn, gnet_dyn_pt=gnet_dyn_pt)
 
