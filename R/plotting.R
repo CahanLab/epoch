@@ -1,5 +1,49 @@
 # plotting functions
 
+#' quick plot of dynamic networks
+#'
+#'
+#' @param grn the result of running epochGRN
+#' @param epochs the result of running assign_epochs
+#' @param tfs tfs
+#' @param only_TFs plot only TF network
+#' 
+#' @return 
+#' 
+#' @export
+#'
+plot_dynamic_network<-function(grn,epochs,tfs,only_TFs=TRUE,order=NULL){
+
+  g<-list()
+
+  if (!is.null(order)){
+    grn<-grn[order]
+  }
+
+  for (i in 1:length(grn)){
+    df<-grn[[i]]
+    
+    if (only_TFs){
+      df<-df[df$TG %in% tfs,]
+    }
+
+    net<-graph_from_data_frame(df[,c("TF","TG")],directed=FALSE)
+    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    
+    g[[i]]<-ggplot()+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=0.75,curvature=0.1, alpha=1/2)+
+      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=10,alpha=.5)+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
+      theme_blank()+theme(legend.position="none")+
+      ggtitle(names(grn)[i])
+
+  }
+
+  do.call(grid.arrange,g)
+
+}
+
+
 
 #' plots results of findDynGenes
 #'

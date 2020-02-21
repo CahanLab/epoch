@@ -21,8 +21,203 @@ And here is the ordering of the cells based on diffusion pseudotime (dpt):
 
 Now, let's use warpNet to reconstruct the GRNs that underpin this trajectory.
 
+## Example Walk Thru 1: Using Epoch
 
-## Example Walk thru 1
+#### Set up
+```R
+library(igraph)
+library(qgraph)
+library(ggnetwork)
+library(gridExtra)
+library(pheatmap)
+library(RColorBrewer)
+library(loomR)
+library(reshape2)
+library(gam)
+library(singleCellNet)
+library(minet)
+
+
+install_github("pcahan1/warpnet",ref="esu")
+library(warpnet)
+
+```
+
+#### Load data
+```R
+list12<-loadLoomExpDiffMap("adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
+expDat<-list12[['expDat']]
+sampTab<-list12[['sampTab']] 
+expDat<-expDat[rowSums(expDat)!=0,]
+mmTFs<-utils_loadObject("mmTFs_123019.rda")
+mmTFs<-intersect(rownames(expDat),mmTFs)
+
+```
+
+#### Find dynamically expressed genes, smooth expression
+```R
+system.time(xdyn <- findDynGenes(expDat, sampTab, c("0","1")))
+
+#starting gammma...
+#   user  system elapsed 
+# 15.310   1.644  17.012 
+ 
+ccells = xdyn$cells
+system.time(expSmoothed <- grnKsmooth(expDat, ccells))
+
+#   user  system elapsed 
+#  0.442   0.009   0.452 
+
+# plot heatmap of the dynamic TFs
+tfstoplot<-intersect(names(xdyn$genes[xdyn$genes<0.01]),mmTFs)
+dynTFs<-xdyn
+dynTFs$genes<-dynTFs$genes[names(dynTFs$genes) %in% tfstoplot]
+hm_dyn(expSmoothed,dynTFs,topX=50)
+
+# looks like 2 or 3 epochs can explain dynamic behavior 
+
+```
+<img src="img/heatmap1_022120.png">
+
+#### Reconstruct GRN across dynamic genes using MI without PT weight
+```R
+system.time(geneDF<-computePT(expSmoothed,expDat,sampTab,xdyn,pThresh=0.01))
+
+#   user  system elapsed 
+#  0.078   0.001   0.078 
+
+system.time(grnDF <- reconstructGRN(expDat[rownames(geneDF),], mmTFs, method="MI", zThresh=2.5))
+
+#   user  system elapsed 
+# 38.831   0.151  39.269 
+
+```
+_**grnDF contains full network, but we can futher explore dynamics by dividing the trajectory into epochs**_
+
+#### Bin genes into epochs
+Divide trajectories into epochs. To keep it simple, first try 2 epochs:
+
+```R
+system.time(epochs<-assign_epochs(expSmoothed,expX,xdyn,num_epochs=2,method="cell_order"))
+
+#   user  system elapsed 
+#  0.119   0.004   0.124 
+
+# alternatively we can run:
+# epochs<-assign_epochs(expSmoothed,expX,xdyn,num_epochs=2,method="group")
+# or 
+# epochs<-assign_epochs(expSmoothed,expX,xdyn,num_epochs=2,method="pseudotime")
+# 
+# This will divide epochs by pre-assigned 'dpt_groups' or 'pseudotime' in sampTab respectively
+
+
+```
+
+#### Build dynamic GRN
+Divides grnDF into distinct GRN per epoch and per transition, filtering interactions between genes not in same or consecutive epoch.
+```R
+system.time(dynamic_grn<-epochGRN(grnDF, epochs, epoch_network=NULL))
+
+# Note: if epoch_network is NULL, epochGRN assumes trajectory 
+# is linear and ordered according to names(epochs).
+# For branched trajectories or unordered list, epoch_network is a data frame 
+# specifying the transition network. For example:
+#
+# epoch_network = data.frame(from=c("epoch1","epoch2"),to=c("epoch2","epoch3"))
+
+
+```
+
+#### Plot the results
+A quick way to plot the results...
+
+```R
+# plot the networks
+plot_dynamic_network(dynamic_grn,epochs,mmTFs,only_TFs=TRUE,order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+# Will update with colors
+
+```
+<img src="img/dynamic_network1_022120.png">
+
+
+```R
+# re-plot heatmap of the dynamic TFs
+
+tfstoplot<-c()
+for (i in 1:length(dynamic_grn)){
+  tfstoplot<-union(tfstoplot,dynamic_grn[[i]]$TF)
+}
+dynTFs<-xdyn
+dynTFs$genes<-dynTFs$genes[names(dynTFs$genes) %in% tfstoplot]
+dynTFs$cells$group<-"epoch2"
+dynTFs$cells$group[1:(nrow(dynTFs$cells)/2)]<-"epoch1"    #since we assigned epochs by cell order
+hm_dyn(expSmoothed,dynTFs,topX=50)
+
+# Can use the heatmap to refine epoch binning
+
+```
+<img src="img/heatmap2_022120.png">
+
+
+## Example Walk thru 2: Calling other methods
+
+#### Load data
+```R
+list12<-loadLoomExpDiffMap("adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
+expDat<-list12[['expDat']]
+sampTab<-list12[['sampTab']]
+expDat<-expDat[rowSums(expDat)!=0,]
+
+```
+
+#### Use wrapper functions to run any subset of methods
+
+Run CLR (either Pearson's or MI), Epoch (reconstruct on dynamically expressed genes), or GENIE3 (on or not on dyngenes).
+
+```R
+tfs<-intersect(rownames(expDat),mmTFs)
+
+# To run all methods set methods - 'all'
+# system.time(res<-reconstructGRN_across_methods(expDat,sampTab,tfs,methods='all',c("0","1")))
+
+# To run a subset of methods, choose from c("CLR_pearson","CLR_MI","Epoch_pearson","Epoch_MI","GENIE3","GENIE3_dyngenes")
+# Run Epoch_MI and GENIE3_dyngenes:
+
+system.time(res<-reconstructGRN_across_methods(expDat,sampTab,tfs,methods=c('Epoch_MI','GENIE3_dyngenes'),c("0","1")))
+
+#   user  system elapsed 
+#372.049   8.956 382.368 
+
+
+```
+
+#### Apply a threshold to call positive, convert to a data frame
+The resulting data frame will have columns TG, TF, corr, and zscore-- note that GENIE3 does not actually return a zscore (but for the sake of code consistency...)
+```R
+enet_mi<-res$enet_mi
+enet_df<-cn_extractRegsDF(enet_mi,cor(t(enet_mi)),rownames(enet_mi),threshold=3)
+
+gnet_dyn<-res$gnet_dyn
+gnet_df<-cn_extractRegsDF(gnet_dyn,cor(t(gnet_dyn)),rownames(gnet_dyn),threshold=0.1)
+
+```
+
+
+#### From here you can summarize TF stats, score TFs, or plot (see walk-thru 3)
+
+
+#### You can also be really crazy and run every method both with and without PT-weighting
+This is useful for benchmarking...
+
+```R
+res<-reconstructGRN_all_methods(expDat,sampTab,tfs,c("0","1"))
+
+```
+
+
+
+## Example Walk thru 3
 
 #### Set up
 ```R
@@ -208,100 +403,6 @@ plot( mstRes1,layout=l1, vertex.label.dist=-0.5,  vertex.label.color="black", ve
 ```
 
 
-## Example Walk thru 2
-
-#### Set up
-```R
-
-library(igraph)
-library(qgraph)
-library(loomR)
-library(gam)
-
-library(devtools)
-install_github("pcahan1/singleCellNet")
-
-library(singleCellNet)
-
-install_github("pcahan1/warpnet")
-library(warpnet)
-
-# uncomment next line if you opt to use PAM instead of k-means. PAM is recommended
-# library(cluster)
-
-library(minet)
-library(GENIE3)
-library(reshape2)
-
-mydate<-utils_myDate()
-
-```
-
-#### Load data
-```R
-list12<-loadLoomExpDiffMap("adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
-expDat<-list12[['expDat']]
-sampTab<-list12[['sampTab']]
-expDat<-expDat[rowSums(expDat)!=0,]
-
-```
-
-#### Use wrapper functions to run any subset of methods
-
-Run CLR (either Pearson's or MI), Epoch (reconstruct on dynamically expressed genes), or GENIE3 (on or not on dyngenes).
-Later on call addDistWeight to run Peak-Time Weighting.
-
-```R
-tfs<-intersect(rownames(expDat),mmTFs)
-
-# To run all methods set methods - 'all'
-# system.time(res<-reconstructGRN_across_methods(expDat,sampTab,tfs,methods='all',c("0","1")))
-
-# To run a subset of methods, choose from c("CLR_pearson","CLR_MI","Epoch_pearson","Epoch_MI","GENIE3","GENIE3_dyngenes")
-
-# Run Epoch_MI and GENIE3_dyngenes
-system.time(res<-reconstructGRN_across_methods(expDat,sampTab,tfs,methods=c('Epoch_MI','GENIE3_dyngenes'),c("0","1")))
-
-   user  system elapsed 
-379.412   4.888 384.625 
-
-```
-
-#### Apply a threshold to call positive, convert to a data frame
-The resulting data frame will have columns TG, TF, corr, and zscore-- note that GENIE3 does not actually return a zscore (but for the sake of code consistency...)
-```R
-enet_mi<-res$enet_mi
-enet_df<-cn_extractRegsDF(enet_mi,cor(t(enet_mi)),rownames(enet_mi),threshold=3)
-
-gnet_dyn<-res$gnet_dyn
-gnet_df<-cn_extractRegsDF(gnet_dyn,cor(t(gnet_dyn)),rownames(gnet_dyn),threshold=0.1)
-
-```
-
-
-#### Apply Peak-Time Weighting
-```R
-# Extract geneDF from res. This is the data frame that contains information on each gene and peak time.
-# In this case, we take res$geneDF_dyn which contains information on only the dynamically expressed genes.
-# res$geneDF_all contains the information for all genes.
-
-geneDF<-res$geneDF_dyn
-
-enet_df<-addDistWeight(enet_df, geneDF, ncells = ncol(expDat), maxNeg= -0.2)
-gnet_df<-addDistWeight(gnet_df, geneDF, ncells = ncol(expDat), maxNeg= -0.2)
-
-
-```
-#### From here you can summarize TF stats, score TFs, or plot (see walk-thru 1)
-
-
-#### You can also be really crazy and run every method both with and without PT-weighting
-This is useful for benchmarking...
-
-```R
-res<-reconstructGRN_all_methods(expDat,sampTab,tfs,c("0","1"))
-
-```
 
 
 
