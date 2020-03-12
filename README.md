@@ -21,6 +21,58 @@ And here is the ordering of the cells based on diffusion pseudotime (dpt):
 
 Now, let's use warpNet to reconstruct the GRNs that underpin this trajectory.
 
+## Example Walk Thru 0: The Basics
+
+#### Set up
+```R
+library(igraph)
+library(qgraph)
+library(ggnetwork)
+library(gridExtra)
+library(pheatmap)
+library(RColorBrewer)
+library(loomR)
+library(reshape2)
+library(gam)
+library(singleCellNet)
+library(minet)
+
+
+install_github("pcahan1/warpnet",ref="esu")
+library(warpnet)
+
+```
+
+#### Load data
+```R
+list12<-loadLoomExpDiffMap("adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
+expDat<-list12[['expDat']]
+sampTab<-list12[['sampTab']] 
+expDat<-expDat[rowSums(expDat)!=0,]
+mmTFs<-utils_loadObject("mmTFs_123019.rda")
+mmTFs<-intersect(rownames(expDat),mmTFs)
+```
+
+#### Reconstruction
+```R
+# Find dynamically expressed genes
+xdyn <- findDynGenes(expDat, sampTab, c("0","1"))
+ccells = xdyn$cells
+
+# Smooth expression
+expSmoothed <- grnKsmooth(expDat, ccells)
+
+# Reconstruct and PT-weight via cross-correlation
+geneDF<-computePT(expSmoothed,expDat,sampTab,xdyn,pThresh=0.01)
+grnDF <- reconstructGRN(expDat[rownames(geneDF),], mmTFs, method="pearson", zThresh=3)
+grnDF<-crossweight(grnDF,expSmoothed)
+
+# the column "weighted_score" contains the PT-weighted score
+
+```
+
+
+
 ## Example Walk Thru 1: Using Epoch
 
 #### Set up

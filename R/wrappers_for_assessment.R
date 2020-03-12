@@ -219,7 +219,107 @@ reconstructGRN_across_methods<-function(expDat,sampTab,tfs,methods,dpt_path){
 #     res
 # }
 
-#' updated crazy wrapper function to run all combinations of methods
+# #' updated crazy wrapper function to run all combinations of methods
+# #'
+# #' @param expDat unsmoothed expression matrix
+# #' @param sampTab sample table containing "cell_names" and "dpt_groups","pseudotime" if running Epoch or PT weight
+# #' @param tfs vector of transcription factor names
+# #' @param dpt_path gross path used to compute dynamically expressed genes
+# #' 
+# #'
+# #' @return list of unthresholded weight or zscore matrices
+# #' 
+# #' @export
+# #'
+# reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
+#     tfs<-intersect(tfs,rownames(expDat))
+
+#     # compute dynamic genes
+#     xdyn <- findDynGenes(expDat, sampTab, dpt_path)
+#     ccells = xdyn$cells
+#     expSmoothed <- grnKsmooth(expDat, ccells)
+
+#     #dynamic and non-dynamic geneDF
+#     geneDF<-computePT(expSmoothed,expDat,sampTab,xdyn,pThresh=0.01)
+#     geneDF_all<-computePT(expSmoothed,expDat,sampTab,xdyn,pThresh=1000)
+
+#     # CLR - Pearson / PT weight
+#     print("CLR pearson with and without PT weight")
+#     grnDF <- reconstructGRN(expDat[rownames(geneDF_all),], tfs, zThresh=0)
+#     grnDF <- weightPT(grnDF,geneDF_all,sampTab)
+
+#     xnet_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+#     xnet_pt[is.na(xnet_pt)]<-0
+#     xnet_pt<-t(xnet_pt)
+
+#     xnet<-acast(grnDF,TF~TG,value.var="zscore")
+#     xnet[is.na(xnet)]<-0
+#     xnet<-t(xnet)
+
+#     # CLR - MI / PT weight
+#     print("CLR MI with and without PT weight")
+#     grnDF <- reconstructGRN(expDat[rownames(geneDF_all),], tfs, method="MI", zThresh=0)
+#     grnDF <- weightPT(grnDF,geneDF_all,sampTab)
+
+#     xnet_mi_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+#     xnet_mi_pt[is.na(xnet_mi_pt)]<-0
+#     xnet_mi_pt<-t(xnet_mi_pt)
+
+#     xnet_mi<-acast(grnDF,TF~TG,value.var="zscore")
+#     xnet_mi[is.na(xnet_mi)]<-0
+#     xnet_mi<-t(xnet_mi)
+    
+#     # Epoch - Pearson / PT weight
+#     print("Epoch pearson with and without PT weight")
+#     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, zThresh=0)
+#     grnDF <- weightPT(grnDF,geneDF,sampTab)
+#     enet<-acast(grnDF,TF~TG,value.var="zscore")
+#     enet[is.na(enet)]<-0
+#     enet<-t(enet)
+
+#     enet_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+#     enet_pt[is.na(enet_pt)]<-0
+#     enet_pt<-t(enet_pt)
+
+#     # Epoch - MI / PT weight
+#     print("Epoch MI with and without PT weight")
+#     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, method = "MI", zThresh=0)
+#     grnDF <- weightPT(grnDF,geneDF,sampTab)
+#     enet_mi<-acast(grnDF,TF~TG,value.var="zscore")
+#     enet_mi[is.na(enet_mi)]<-0
+#     enet_mi<-t(enet_mi)
+ 
+#     enet_mi_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+#     enet_mi_pt[is.na(enet_mi_pt)]<-0
+#     enet_mi_pt<-t(enet_mi_pt)
+
+#     # GENIE3, all genes
+#     print("GENIE3")
+#     grnDF <- reconstructGRN_GENIE3(expDat[rownames(geneDF_all),],tfs)
+#     gnet<-acast(grnDF,TF~TG,value.var="zscore")
+#     gnet[is.na(gnet)]<-0
+#     gnet<-t(gnet)
+
+#     # GENIE3 - dyngenes / PT weight
+#     print("GENIE3-dyn with and without PT weight")
+#     grnDF <- reconstructGRN_GENIE3(expDat[rownames(geneDF),],tfs)
+#     grnDF <- weightPT(grnDF,geneDF,sampTab)
+#     gnet_dyn<-acast(grnDF,TF~TG,value.var="zscore")
+#     gnet_dyn[is.na(gnet_dyn)]<-0
+#     gnet_dyn<-t(gnet_dyn)
+
+#     gnet_dyn_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+#     gnet_dyn_pt[is.na(gnet_dyn_pt)]<-0
+#     gnet_dyn_pt<-t(gnet_dyn_pt)
+
+#     res<-list(enet=enet, enet_mi=enet_mi, enet_mi_pt=enet_mi_pt, enet_pt=enet_pt, xnet=xnet, xnet_mi=xnet_mi, xnet_mi_pt=xnet_mi_pt, xnet_pt=xnet_pt, gnet=gnet, gnet_dyn=gnet_dyn, gnet_dyn_pt=gnet_dyn_pt)
+
+#     res
+# }
+
+
+
+#' updated updated crazy wrapper function to run all combinations of methods
 #'
 #' @param expDat unsmoothed expression matrix
 #' @param sampTab sample table containing "cell_names" and "dpt_groups","pseudotime" if running Epoch or PT weight
@@ -246,9 +346,9 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     # CLR - Pearson / PT weight
     print("CLR pearson with and without PT weight")
     grnDF <- reconstructGRN(expDat[rownames(geneDF_all),], tfs, zThresh=0)
-    grnDF <- weightPT(grnDF,geneDF_all,sampTab)
+    grnDF<-crossweight(grnDF,expSmoothed)
 
-    xnet_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+    xnet_pt<-acast(grnDF,TF~TG,value.var="weighted_score")
     xnet_pt[is.na(xnet_pt)]<-0
     xnet_pt<-t(xnet_pt)
 
@@ -259,9 +359,9 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     # CLR - MI / PT weight
     print("CLR MI with and without PT weight")
     grnDF <- reconstructGRN(expDat[rownames(geneDF_all),], tfs, method="MI", zThresh=0)
-    grnDF <- weightPT(grnDF,geneDF_all,sampTab)
+    grnDF<-crossweight(grnDF,expSmoothed)
 
-    xnet_mi_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+    xnet_mi_pt<-acast(grnDF,TF~TG,value.var="weighted_score")
     xnet_mi_pt[is.na(xnet_mi_pt)]<-0
     xnet_mi_pt<-t(xnet_mi_pt)
 
@@ -272,24 +372,24 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     # Epoch - Pearson / PT weight
     print("Epoch pearson with and without PT weight")
     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, zThresh=0)
-    grnDF <- weightPT(grnDF,geneDF,sampTab)
+    grnDF<-crossweight(grnDF,expSmoothed)
     enet<-acast(grnDF,TF~TG,value.var="zscore")
     enet[is.na(enet)]<-0
     enet<-t(enet)
 
-    enet_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+    enet_pt<-acast(grnDF,TF~TG,value.var="weighted_score")
     enet_pt[is.na(enet_pt)]<-0
     enet_pt<-t(enet_pt)
 
     # Epoch - MI / PT weight
     print("Epoch MI with and without PT weight")
     grnDF <- reconstructGRN(expDat[rownames(geneDF),], tfs, method = "MI", zThresh=0)
-    grnDF <- weightPT(grnDF,geneDF,sampTab)
+    grnDF<-crossweight(grnDF,expSmoothed)
     enet_mi<-acast(grnDF,TF~TG,value.var="zscore")
     enet_mi[is.na(enet_mi)]<-0
     enet_mi<-t(enet_mi)
  
-    enet_mi_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+    enet_mi_pt<-acast(grnDF,TF~TG,value.var="weighted_score")
     enet_mi_pt[is.na(enet_mi_pt)]<-0
     enet_mi_pt<-t(enet_mi_pt)
 
@@ -303,12 +403,12 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
     # GENIE3 - dyngenes / PT weight
     print("GENIE3-dyn with and without PT weight")
     grnDF <- reconstructGRN_GENIE3(expDat[rownames(geneDF),],tfs)
-    grnDF <- weightPT(grnDF,geneDF,sampTab)
+    grnDF<-crossweight(grnDF,expSmoothed)
     gnet_dyn<-acast(grnDF,TF~TG,value.var="zscore")
     gnet_dyn[is.na(gnet_dyn)]<-0
     gnet_dyn<-t(gnet_dyn)
 
-    gnet_dyn_pt<-acast(grnDF,TF~TG,value.var="adjusted_weight")
+    gnet_dyn_pt<-acast(grnDF,TF~TG,value.var="weighted_score")
     gnet_dyn_pt[is.na(gnet_dyn_pt)]<-0
     gnet_dyn_pt<-t(gnet_dyn_pt)
 
