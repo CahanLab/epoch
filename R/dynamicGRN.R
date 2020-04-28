@@ -21,7 +21,7 @@
 assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotime",pThresh=0.01,toScale=FALSE){
 
 	# limit exp to dynamically expressed genes
-	exp<-expSmoothed[names(dynRes$genes[dynRes$genes<0.01]),]
+	exp<-expSmoothed[names(dynRes$genes[dynRes$genes<pThresh]),]
 	# scale the data if needed
 	if (toScale){
 		if(class(exp)[1]!='matrix'){
@@ -53,7 +53,7 @@ assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotim
    	sort(t1, decreasing=FALSE)
 	exp<-exp[,names(t1)]
 
-
+	mean_expression<-data.frame(gene=character(),epoch=numeric(),mean_expression=numeric())
 	if (method=="cell_order"){
 		# Divide epochs evenly by cell order number; assumes even sampling of cells across pseudotime
 
@@ -71,6 +71,9 @@ assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotim
 			chunk_df$active<-(chunk_df$means>=chunk_df$thresh)
 
 			epochs[[i]]<-rownames(chunk_df[chunk_df$active,])
+
+			mean_expression<-rbind(mean_expression,data.frame(gene=rownames(chunk),epoch=rep(i,length(rownames(chunk))),mean_expression=rowMeans(chunk)))
+
 		}
 
 	}else if (method=="pseudotime"){
@@ -97,6 +100,8 @@ assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotim
 
 			epochs[[i]]<-rownames(chunk_df[chunk_df$active,])
 
+			mean_expression<-rbind(mean_expression,data.frame(gene=rownames(chunk),epoch=rep(i,length(rownames(chunk))),mean_expression=rowMeans(chunk)))
+
 		}
 
 
@@ -118,12 +123,17 @@ assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotim
 			chunk_df$active<-(chunk_df$means>=chunk_df$thresh)
 
 			epochs[[epoch]]<-rownames(chunk_df[chunk_df$active,])
+
+			mean_expression<-rbind(mean_expression,data.frame(gene=rownames(chunk),epoch=rep(i,length(rownames(chunk))),mean_expression=rowMeans(chunk)))
+
 		}
 
 	}else{
 		stop('invalid method.')
 	}
 
+	mean_expression$epoch<-paste0("epoch",mean_expression$epoch)
+	epochs$mean_expression<-mean_expression
 	epochs
 
 }
@@ -139,6 +149,9 @@ assign_epochs<-function(expSmoothed,expDat,dynRes,num_epochs=3,method="pseudotim
 #'
 epochGRN<-function(grnDF, epochs, epoch_network=NULL){
 	
+	epochs$mean_expression<-NULL
+	all_dyngenes<-unique(unlist(epochs,use.names = FALSE))
+
 	# assign epoch_network if NULL
 	if (is.null(epoch_network)){
 		
@@ -165,8 +178,24 @@ epochGRN<-function(grnDF, epochs, epoch_network=NULL){
 		from<-as.character(epoch_network[t,1])
 		to<-as.character(epoch_network[t,2])
 
+		# TF must be active in source epoch
 		temp<-grnDF[grnDF$TF %in% epochs[[from]],]
-		temp<-temp[temp$TG %in% epochs[[to]],]
+
+		# For transition network
+		if (from!=to){
+			# target turns on: target is not active in source epoch but is active in target epoch
+
+			# target turns off: target is active in source epoch but is not active in target epoch
+
+			# remove any other interaction (i.e. interactions that are constant -- target on in both epochs or off in both epochs)
+			remove_tgs_in_both<-intersect(epochs[[to]],epochs[[from]])
+			remove_tgs_in_neither<-intersect(setdiff(all_dyngenes,epochs[[from]]),setdiff(all_dyngenes,epochs[[to]]))
+
+			temp<-temp[!(temp$TG %in% remove_tgs_in_both),]
+			temp<-temp[!(temp$TG %in% remove_tgs_in_neither),]
+
+		}
+		# Else, For epoch network (non-transition network), keep all interactions as long as TF is active
 
 		GRN[[epoch_network[t,"name"]]]<-temp
 
@@ -175,6 +204,78 @@ epochGRN<-function(grnDF, epochs, epoch_network=NULL){
 	GRN
 
 }
+
+
+#' Function to compute page rank of TF+target networks
+#'
+#' @param dynnet result of dynamic GRN reconstruction
+#' @param weight_column name of column in dynnet to weight edges
+#' @param directed_graph if GRN is directed or not
+#'
+#' @return list of dataframes of active genes in each epoch and transition, ranked by page rank
+#' @export
+#'
+compute_pagerank<-function(dynnet,weight_column="zscore",directed_graph=FALSE){
+
+  ranks<-sapply(names(dynnet), function (x) NULL)
+  for (net in names(dynnet)){
+    df<-dynnet[[net]]
+    
+    df<-df[,c("TF","TG",weight_column)]
+    colnames(df)<-c("TF","TG","weight")
+    
+    tfnet<-graph_from_data_frame(df,directed=directed_graph)
+    
+    pagerank<-data.frame(page_rank(tfnet,directed=directed_graph)$vector)
+    colnames(pagerank)<-c("page_rank")
+    pagerank$gene<-rownames(pagerank)
+    pagerank<-pagerank[,c("gene","page_rank")]
+    pagerank<-pagerank[order(pagerank$page_rank,decreasing=TRUE),]
+
+    pagerank$is_regulator<-FALSE
+    pagerank$is_regulator[pagerank$gene %in% unique(df$TF)]<-TRUE
+    
+    ranks[[net]]<-pagerank
+  }
+  
+  ranks
+}
+
+
+#' Function to compute page rank of TF-only networks
+#'
+#' @param dynnet result of dynamic GRN reconstruction
+#' @param tfs TFs
+#' @param weight_column name of column in dynnet to weight edges
+#' @param directed_graph if GRN is directed or not
+#'
+#' @return list of dataframes of active TFs in each epoch and transition, ranked by page rank
+#' @export
+tfnet_pagerank<-function(dynnet,tfs,weight_column="zscore",directed_graph=FALSE){
+
+  tfranks<-sapply(names(dynnet), function (x) NULL)
+  for (net in names(dynnet)){
+    df<-dynnet[[net]]
+    #limit dynamic network to TFs
+    df<-df[df$TG %in% tfs,]
+    
+    df<-df[,c("TF","TG",weight_column)]
+    colnames(df)<-c("TF","TG","weight")
+    
+    tfnet<-graph_from_data_frame(df,directed=directed_graph)
+    
+    pagerank<-data.frame(page_rank(tfnet,directed=directed_graph)$vector)
+    colnames(pagerank)<-c("page_rank")
+    pagerank$TF<-rownames(pagerank)
+    pagerank<-pagerank[,c("TF","page_rank")]
+    pagerank<-pagerank[order(pagerank$page_rank,decreasing=TRUE),]
+    
+    tfranks[[net]]<-pagerank
+  }
+  
+  tfranks
+}
+
 
 
 

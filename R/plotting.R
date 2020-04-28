@@ -31,9 +31,10 @@ plot_dynamic_network<-function(grn,epochs,tfs,only_TFs=TRUE,order=NULL){
     tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
     
     g[[i]]<-ggplot()+
-      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=0.75,curvature=0.1, alpha=1/2)+
-      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=10,alpha=.5)+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=0.75,curvature=0.1, alpha=.6)+
+      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=5,alpha=.5)+
+      #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
       theme_blank()+theme(legend.position="none")+
       ggtitle(names(grn)[i])
 
@@ -43,7 +44,289 @@ plot_dynamic_network<-function(grn,epochs,tfs,only_TFs=TRUE,order=NULL){
 
 }
 
+#' quick plot of top regulators in dynamic networks
+#'
+#'
+#' @param grn the result of running epochGRN
+#' @param gene_ranks the result of running compute_pagerank
+#' @param tfs tfs
+#' @param numTopTFs number of top regulators to plot
+#' @param numTargets number of top targets to plot for each regulator
+#' @param only_TFs plot only TF network
+#' @param order which epochs or transitions to plot
+#' 
+#' @return 
+#' 
+#' @export
+#'
+plot_top_regulators<-function(grn,gene_ranks,tfs,numTopTFs=5, numTargets=5, only_TFs=TRUE,order=NULL){
 
+  g<-list()
+
+  if (!is.null(order)){
+    grn<-grn[order]
+  }
+
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    df<-grn[[epoch]]
+    
+    if (only_TFs){
+      df<-df[df$TG %in% tfs,]
+    }
+
+    rank<-gene_ranks[[epoch]]
+    topregs<-rownames(rank[rank$is_regulator==TRUE,])[1:numTopTFs]
+    df<-df[df$TF %in% topregs,]
+
+    topdf<-data.frame(TF=character(),TG=character())
+    for (reg in topregs){
+      targets<-as.character(df[df$TF==reg,"TG"])
+      rank_targets<-rank[targets,]
+      rank_targets<-rank_targets[order(rank_targets$page_rank,decreasing=TRUE),]
+      num<-numTargets
+      if (numTargets>length(targets)){
+        num<-length(targets)
+      }
+
+      toptargets<-rownames(rank_targets)[1:num]
+      add<-df[df$TF==reg,c("TF","TG")]
+      add<-add[add$TG %in% toptargets,]
+
+      topdf<-rbind(topdf,add)
+    }
+
+    net<-graph_from_data_frame(topdf[,c("TF","TG")],directed=FALSE)
+    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    tfnet$is_regulator<-as.character(tfnet$vertex.names %in% topregs)
+    
+    cols<-c("TRUE"="#8C4985","FALSE"="darkgray")
+
+    g[[i]]<-ggplot()+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=0.75,curvature=0.1, alpha=.6)+
+      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,color=is_regulator),size=6,alpha=.8)+
+      scale_color_manual(values=cols)+
+      #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      theme_blank()+theme(legend.position="none")+
+      ggtitle(names(grn)[i])
+
+  }
+
+  do.call(grid.arrange,g)
+
+}
+
+#' quick plot of top regulators given targets in dynamic networks based on reconstruction weight
+#'
+#'
+#' @param grn the result of running epochGRN
+#' @param targets targets
+#' @param weight_column column name containing reconstruction weights to use
+#' @param numTopRegulators number of top regulators to plot
+#' @param order which epochs or transitions to plot
+#' 
+#' @return 
+#' 
+#' @export
+#'
+plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL){
+  g<-list()
+
+  if (!is.null(order)){
+    grn<-grn[order]
+  }
+
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    df<-grn[[epoch]]
+
+    #look for targets in epoch GRN
+    tgs<-as.character(df[df$TG %in% targets,"TG"])
+    if (length(tgs)==0){
+      next
+    }
+
+    #find top regulators for each target
+    edges_to_keep<-data.frame(TF=character(),TG=character())
+    if(weight_column=="page_rank"){
+      for (tg in tgs){
+        if (is.null(gene_ranks)){
+          stop("Need to supply gene_ranks.")
+        }
+        rank<-gene_ranks[[epoch]]
+        regs_of_targets<-as.character(df[df$TG==tg,"TF"])
+        rank_regs<-rank[regs_of_targets,]
+        rank_regs<-rank_regs[order(rank_regs$page_rank,decreasing=TRUE),]
+        top_regs<-rownames(rank_regs)[1:numTopRegulators]
+
+        edges<-df[df$TG==tg,]
+        edges<-edges[edges$TF %in% top_regs,c("TF","TG")]
+
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG)))
+
+        #random little hack to fix stupid issue with ggnetwork...
+        if(nrow(edges_to_keep)==1){
+          edges_to_keep<-rbind(edges_to_keep,data.frame(TF=NA,TG=NA))
+        }
+
+      }
+    }else{
+      for (tg in tgs){
+        edges<-df[df$TG==tg,]
+        edges<-edges[order(edges[,weight_column],decreasing=TRUE),]
+        edges<-edges[1:numTopRegulators,c("TF","TG")]
+
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG)))
+      }
+    }
+    #plot 
+    net<-graph_from_data_frame(edges_to_keep[,c("TF","TG")],directed=FALSE)
+    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    tfnet$type<-"tf"
+    tfnet$type[tfnet$vertex.names %in% targets]<-"tg"
+
+    tfnet<-tfnet[!(is.na(tfnet$vertex.names)),]
+
+    cols<-c("tf"="darkgray","tg"="#F5663A")
+
+    g[[i]]<-ggplot()+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),size=0.75,curvature=0.1, alpha=.6)+
+      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type,color=type),size=6,alpha=.8)+
+      #scale_color_manual(values=c("#F5663A","#8C4985"),labels=c("tg","tf"))+
+      scale_color_manual(values=cols)+
+      geom_nodes(data=tfnet[tfnet$vertex.names %in% targets,],aes(x=x,y=y,xend=xend,yend=yend),shape=24,size=6,color="black",stroke=0.25)+
+      #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=3, color="#8856a7")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      theme_blank()+theme(legend.position="none")+
+      ggtitle(names(grn)[i])
+
+  }
+  g[sapply(g,is.null)]<-NULL
+  do.call(grid.arrange,g)
+
+}
+
+#' quick plot of top regulators given targets in dynamic networks based on reconstruction weight, colored by expression and interaction type
+#'
+#'
+#' @param grn the result of running epochGRN
+#' @param targets targets
+#' @param epochs result of running assign_epochs
+#' @param weight_column column name containing reconstruction weights to use
+#' @param numTopRegulators number of top regulators to plot
+#' @param order which epochs or transitions to plot
+#' 
+#' @return 
+#' 
+#' @export
+#'
+plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL){
+  g<-list()
+
+  mean_expression<-epochs$mean_expression
+
+  if (!is.null(order)){
+    grn<-grn[order]
+  }
+
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    df<-grn[[epoch]]
+
+    #look for targets in epoch GRN
+    tgs<-as.character(df[df$TG %in% targets,"TG"])
+    if (length(tgs)==0){
+      next
+    }
+
+    df$interaction<-"activation"
+    df$interaction[df$corr<0]<-"repression"
+    #find top regulators for each target
+    edges_to_keep<-data.frame(TF=character(),TG=character())
+    if(weight_column=="page_rank"){
+      for (tg in tgs){
+        if (is.null(gene_ranks)){
+          stop("Need to supply gene_ranks.")
+        }
+        rank<-gene_ranks[[epoch]]
+        regs_of_targets<-as.character(df[df$TG==tg,"TF"])
+        rank_regs<-rank[regs_of_targets,]
+        rank_regs<-rank_regs[order(rank_regs$page_rank,decreasing=TRUE),]
+        top_regs<-rownames(rank_regs)[1:numTopRegulators]
+
+        edges<-df[df$TG==tg,]
+        edges<-edges[edges$TF %in% top_regs,c("TF","TG","interaction")]
+
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
+
+        #random little hack to fix stupid issue with ggnetwork...
+        if(nrow(edges_to_keep)==1){
+          edges_to_keep<-rbind(edges_to_keep,data.frame(TF=NA,TG=NA))
+        }
+
+      }
+    }else{
+      for (tg in tgs){
+        edges<-df[df$TG==tg,]
+        edges<-edges[order(edges[,weight_column],decreasing=TRUE),]
+        edges<-edges[1:numTopRegulators,c("TF","TG","interaction")]
+
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
+      }
+    }
+    #plot 
+    net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
+
+    expression_from<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][1],]
+    expression_to<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][2],]
+    
+    if(strsplit(epoch,split="..",fixed=TRUE)[[1]][1] == strsplit(epoch,split="..",fixed=TRUE)[[1]][2]){
+      # epoch (non-transition) network
+      V(net)$expression<-expression_from$mean_expression[match(V(net)$name,expression_from$gene)]
+    }else{
+      #transition network expression of TF from source epoch, expression of target from target epoch
+      V(net)$expression<-ifelse(V(net)$name %in% edges_to_keep$TF,expression_from$mean_expression[match(V(net)$name,expression_from$gene)],expression_to$mean_expression[match(V(net)$name,expression_to$gene)])
+    }
+
+    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    tfnet$type<-"regulator"
+    tfnet$type[tfnet$vertex.names %in% targets]<-"known target"
+
+    tfnet<-tfnet[!(is.na(tfnet$vertex.names)),]
+
+    cols<-c("activation"="blue","repression"="red")
+
+    g[[i]]<-ggplot()+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,color=interaction),size=0.75,curvature=0.1, alpha=.6)+
+      geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type,size=expression,alpha=expression),color="black")+
+      scale_color_manual(values=cols)+
+      #geom_nodes(data=tfnet[tfnet$vertex.names %in% targets,],aes(x=x,y=y,xend=xend,yend=yend),shape=24,size=6,color="black",stroke=0.25)+
+      #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=3, color="#8856a7")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      theme_blank()+
+      ggtitle(names(grn)[i])
+
+    common_legend<-get_legend(g[[i]])
+
+    g[[i]]<-g[[i]]+theme(legend.position="none")
+  }
+
+  g[sapply(g,is.null)]<-NULL
+
+  g$legend<-common_legend
+  do.call(grid.arrange,g)
+
+}
+
+#helpful piece of code to extract a legend
+#https://github.com/hadley/ggplot2/wiki/Share-a-legend-between-two-ggplot2-graphs
+get_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
 
 #' plots results of findDynGenes
 #'
@@ -225,7 +508,7 @@ hm_dyn<-function(
         show_colnames = FALSE, annotation_names_row = FALSE,
 ##        annotation_col = annTab,
         annotation_col = xx,
-        annotation_names_col = FALSE, annotation_colors = anno_colors, fontsize_row=fontsize_row)
+        annotation_names_col = FALSE, annotation_colors = anno_colors, fontsize_row=fontsize_row, border_color=NA)
 }
 }
 

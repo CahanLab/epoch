@@ -416,3 +416,89 @@ reconstructGRN_all_methods<-function(expDat,sampTab,tfs,dpt_path){
 
     res
 }
+
+
+# Function for AUPR computation after running reconstructGRN_all_methods
+# ATM need to source calcPRs.R... will add this in...
+aupr_res2<-function(res,gs){
+    
+  enet<-res$enet
+  enet_mi<-res$enet_mi
+  enet_mi_pt<-res$enet_mi_pt
+  enet_pt<-res$enet_pt
+  xnet<-res$xnet
+  xnet_mi<-res$xnet_mi
+  xnet_mi_pt<-res$xnet_mi_pt
+  xnet_pt<-res$xnet_pt
+  gnet<-res$gnet
+  gnet_dyn<-res$gnet_dyn
+  gnet_dyn_pt<-res$gnet_dyn_pt
+
+  gs_dyn<-gs
+  dgenes<-rownames(enet)
+  gs_dyn<-gs_dyn[gs_dyn$TF %in% dgenes,]
+  gs_dyn<-gs_dyn[gs_dyn$TG %in% dgenes,]
+  gs_dyn<-split(gs_dyn$TG,gs_dyn$TF)
+
+  gs<-gs[gs$TF %in% rownames(xnet),]
+  gs<-gs[gs$TG %in% rownames(xnet),]
+  gs<-split(gs$TG,gs$TF)    
+
+  pr_clr<-totalPR(xnet,gs,tRange=seq(0,30,by=0.001))
+  pr_clr_mi<-totalPR(xnet_mi,gs,tRange=seq(0,30,by=0.001))
+  pr_clrpt<-totalPR(xnet_pt,gs,tRange=seq(0,30,by=0.001))
+  pr_clrpt_mi<-totalPR(xnet_mi_pt,gs,tRange=seq(0,30,by=0.001))
+
+  pr_epoch<-totalPR(enet,gs_dyn,tRange=seq(0,30,by=0.001))
+  pr_epochpt<-totalPR(enet_pt,gs_dyn,tRange=seq(0,30,by=0.001))
+  pr_epochpt_mi<-totalPR(enet_mi_pt,gs_dyn,tRange=seq(0,30,by=0.001))
+  pr_epoch_mi<-totalPR(enet_mi,gs_dyn,tRange=seq(0,30,by=0.001))
+
+  pr_genie<-totalPR(gnet,gs,tRange=seq(0,30,by=0.001))
+  pr_geniedyn<-totalPR(gnet_dyn,gs_dyn,tRange=seq(0,30,by=0.001))
+  pr_geniedynpt<-totalPR(gnet_dyn_pt,gs_dyn,tRange=seq(0,30,by=0.001))
+
+  pr_clr$method<-"CLR_pearson"
+  pr_clr_mi$method<-"CLR_MI"
+  pr_clrpt$method<-"CLR_pearson_PT"
+  pr_clrpt_mi$method<-"CLR_MI_PT"
+  pr_epoch$method<-"Epoch_pearson"
+  pr_epochpt$method<-"Epoch_pearson_PT"
+  pr_epochpt_mi$method<-"Epoch_MI_PT"
+  pr_epoch_mi$method<-"Epoch_MI"
+  pr_genie$method<-"GENIE3"
+  pr_geniedyn$method<-"GENIE3_dyngenes"
+  pr_geniedynpt$method<-"GENIE3_dyngenes_PT"
+
+  totalpr<-rbind(pr_clr,pr_clrpt)
+  totalpr<-rbind(totalpr,pr_clr_mi)
+  totalpr<-rbind(totalpr,pr_clrpt_mi)
+  totalpr<-rbind(totalpr,pr_epoch)
+  totalpr<-rbind(totalpr,pr_epochpt)
+  totalpr<-rbind(totalpr,pr_epoch_mi)
+  totalpr<-rbind(totalpr,pr_epochpt_mi)
+  totalpr<-rbind(totalpr,pr_genie)
+  totalpr<-rbind(totalpr,pr_geniedyn)
+  totalpr<-rbind(totalpr,pr_geniedynpt)
+
+  aupr<-data.frame(method=character(),aupr=numeric(),aupr05_norm=numeric(),aupr10_norm=numeric(),aupr20_norm=numeric())
+  for (method in unique(totalpr$method)){
+      subset<-totalpr[totalpr$method==method,c("Precision","Recall")]
+      subset<-subset[complete.cases(subset),]
+      auc<-DescTools::AUC(subset$Recall,subset$Precision, method="trapezoid", subdivisions=10000)
+
+      subset<-subset[subset$Recall<=0.2,]        #none of the parameters in DescTools::AUC are working... do this manually
+      auc20<-DescTools::AUC(subset$Recall,subset$Precision, method="trapezoid", subdivisions=10000)
+
+      subset<-subset[subset$Recall<=0.1,]
+      auc10<-DescTools::AUC(subset$Recall,subset$Precision, method="trapezoid", subdivisions=10000)
+
+      subset<-subset[subset$Recall<=0.05,]
+      auc05<-DescTools::AUC(subset$Recall,subset$Precision, method="trapezoid", subdivisions=10000)
+      aupr<-rbind(aupr,data.frame(method=method,aupr=auc,aupr05_norm=auc05/0.05,aupr10_norm=auc10/0.1,aupr20_norm=auc20/0.2))
+
+  }
+
+  res<-list(aupr=aupr, totalpr=totalpr)
+
+}
