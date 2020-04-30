@@ -216,12 +216,14 @@ plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",ge
 #' @param weight_column column name containing reconstruction weights to use
 #' @param numTopRegulators number of top regulators to plot
 #' @param order which epochs or transitions to plot
+#' @param fixed_layout whether or not to fix node positions across epoch networks
+#' @param declutter if TRUE, will only label nodes with active interactions in given network
 #' 
 #' @return 
 #' 
 #' @export
 #'
-plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL){
+plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL,fixed_layout=TRUE,declutter=TRUE){
   g<-list()
 
   mean_expression<-epochs$mean_expression
@@ -230,6 +232,8 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
     grn<-grn[order]
   }
 
+  #----------- Extract graphs for each known target network------------
+  ktgraph<-list()
   for (i in 1:length(grn)){
     epoch<-names(grn)[i]
     df<-grn[[epoch]]
@@ -274,13 +278,61 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
 
         edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
       }
+    
     }
-    #plot 
-    net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
 
+    ktgraph[[epoch]]<-edges_to_keep
+
+  }
+
+  # ---------- compute node coordinates if fixed_layout==TRUE -------------
+  if (fixed_layout){
+    # # using sna package
+    # # aggregate epoch networks
+    # agg<-dplyr::bind_rows(grn)[,c("TF","TG")]
+    # agg<-agg[!duplicated(agg),]
+    # agg<-as_adjacency_matrix(graph_from_data_frame(agg,directed=FALSE))
+    # # assign layout-- fruchterman-reingold 
+    # layout<-sna::gplot.layout.fruchtermanreingold(as.matrix(agg),layout.par = c())
+
+    # using igraph
+    # aggregate epoch networks
+    agg<-dplyr::bind_rows(ktgraph)[,c("TF","TG","interaction")]
+    agg<-agg[!duplicated(agg),]
+    agg<-graph_from_data_frame(agg,directed=FALSE)
+    agg<-delete_vertices(agg,v=V(agg)$name[is.na(V(agg)$name)])
+
+    # assign layout -- fruchterman-reingold
+    layout<-layout_with_fr(agg)
+    rownames(layout)<-V(agg)$name
+
+  }
+
+
+  # -------------PLOT each network--------------
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    edges_to_keep<-ktgraph[[epoch]]
+
+    # Covert to igraph object
+    if (fixed_layout){
+      # make network
+      net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
+      # add vertices (no edges) that aren't in epoch network
+      addvtcs<-V(agg)$name[!(V(agg)$name %in% V(net)$name)]
+      net<-add_vertices(net,length(addvtcs),attr=list(name=addvtcs))
+
+    }else{
+      net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
+    }
+
+    # remove nodes with name NA
+    net<-delete_vertices(net,v=V(net)$name[is.na(V(net)$name)])
+    net<-delete_vertices(net,v=V(net)$name[V(net)$name=="NA"])      # stupid hack
+
+    # add expression values as node attribute
     expression_from<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][1],]
     expression_to<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][2],]
-    
     if(strsplit(epoch,split="..",fixed=TRUE)[[1]][1] == strsplit(epoch,split="..",fixed=TRUE)[[1]][2]){
       # epoch (non-transition) network
       V(net)$expression<-expression_from$mean_expression[match(V(net)$name,expression_from$gene)]
@@ -289,9 +341,19 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       V(net)$expression<-ifelse(V(net)$name %in% edges_to_keep$TF,expression_from$mean_expression[match(V(net)$name,expression_from$gene)],expression_to$mean_expression[match(V(net)$name,expression_to$gene)])
     }
 
-    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    # convert to ggnetwork object
+    if (fixed_layout){
+      # order layout
+      layout_ordered<-layout[V(net)$name,]
+      tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+      }else{
+        tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+      }
+    
+    # specify if node is known regulator
     tfnet$type<-"regulator"
     tfnet$type[tfnet$vertex.names %in% targets]<-"known target"
+    tfnet$type<-factor(tfnet$type,levels=c("regulator","known target"))
 
     tfnet<-tfnet[!(is.na(tfnet$vertex.names)),]
 
@@ -303,15 +365,23 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       scale_color_manual(values=cols)+
       #geom_nodes(data=tfnet[tfnet$vertex.names %in% targets,],aes(x=x,y=y,xend=xend,yend=yend),shape=24,size=6,color="black",stroke=0.25)+
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=3, color="#8856a7")+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
       theme_blank()+
       ggtitle(names(grn)[i])
+
+    if(declutter){
+      keep<-union(edges_to_keep$TF,edges_to_keep$TG)
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet[tfnet$vertex.names %in% keep,],aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")
+    }else{
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")
+    }
 
     common_legend<-get_legend(g[[i]])
 
     g[[i]]<-g[[i]]+theme(legend.position="none")
+
   }
 
+  # ------- Facet Plots --------
   g[sapply(g,is.null)]<-NULL
 
   g$legend<-common_legend

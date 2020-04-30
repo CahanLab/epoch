@@ -166,31 +166,65 @@ system.time(epochs<-assign_epochs(expSmoothed,expX,xdyn,num_epochs=2,method="cel
 ```
 
 #### Build dynamic GRN
-Divides grnDF into distinct GRN per epoch and per transition, filtering interactions between genes not in same or consecutive epoch.
+Divides grnDF into distinct GRN per epoch and per transition.
 ```R
 system.time(dynamic_grn<-epochGRN(grnDF, epochs, epoch_network=NULL))
 
 # Note: if epoch_network is NULL, epochGRN assumes trajectory 
 # is linear and ordered according to names(epochs).
 # For branched trajectories or unordered list, epoch_network is a data frame 
-# specifying the transition network. For example:
+# specifying the transitions. For example:
 #
 # epoch_network = data.frame(from=c("epoch1","epoch2"),to=c("epoch2","epoch3"))
 
 
 ```
 
-#### Plot the results
-A quick way to plot the results...
-
+#### Pick out top regulators
+It may be important to identify top regulators driving network transitions.
+We can do this via Page Rank for each epoch and transition network:
 ```R
-# plot the networks
-plot_dynamic_network(dynamic_grn,epochs,mmTFs,only_TFs=TRUE,order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+system.time(gene_rank<-compute_pagerank(dynamic_grn))
 
-# Will update with colors
+#   user  system elapsed 
+#  0.010   0.001   0.018 
 
 ```
-<img src="img/dynamic_network1_022120.png">
+
+#### Plot the results
+A few quick ways to plot the results...
+
+```R
+# Here's a basic plot of the networks
+plot_dynamic_network(dynamic_grn,epochs,mmTFs,only_TFs=TRUE,order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+```
+<img src="img/dynamicnetwork1_043020.png">
+
+
+```R
+# Here's how we can plot top regulators and their top targets
+plot_top_regulators(dynamic_grn, gene_rank, tfs, only_TFs=FALSE, order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+# We can specify additional parameters:
+# plot_top_regulators(dynamic_grn, gene_rank, tfs, numTopTFs=3, numTargets=5, only_TFs=TRUE, order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+```
+<img src="img/dynamicnetwork2_043020.png">
+
+
+```R
+# Here's how we can plot targets of interest and their top regulators
+interesting_targets<-c("Myf5","Myo10","Mypn","Myot","Tnnt2")
+interesting_targets<-interesting_targets[interesting_targets %in% rownames(geneDF)]
+
+plot_targets_with_top_regulators_detail(dynamic_grn,interesting_targets,epochs,weight_column="zscore",order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"),declutter=FALSE)
+
+# To plot top regulators based on Page Rank, set weight_column="page_rank" and provide gene_ranks=(the result of running compute_pagerank)
+# To only include node labels on nodes incident to active edges, set declutter=TRUE
+
+```
+<img src="img/dynamicnetwork3_043020.png">
 
 
 ```R
