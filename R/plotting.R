@@ -901,6 +901,116 @@ ig_convertMedium<-function# change igraph attributes so that it is suitable for 
 }
 
 
+' plots results of findDynGenes
+#'
+#' heatmap
+#'
+#'
+#' @param expDat expression matrix
+#' @param dynRes result of running findDynGenes
+#' @param topX top x genes to plot
+#' '
+#' @return heatmaps
+#' 
+#' @export
+#'
+hm_dyn_epoch<-function(
+  expDat,
+  epochRes,
+  row_cols,
+  limits=c(0,10),
+  toScale=FALSE,
+  fontsize_row=4){
+
+  allgenes<-rownames(expDat)
+
+  # CELLS
+  sampTab = epochRes$cells
+  t1 = sampTab$pseudotime
+  names(t1) = as.vector(sampTab$cell_name)
+  grps = as.vector(sampTab$epoch)
+  names(grps) = as.vector(sampTab$cell_name)
+  ord1 = sort(t1)
+  expDat = expDat[,names(ord1)]
+  grps = grps[names(ord1)]
+
+  # GENES
+  geneTab = epochRes$genes
+  genes = rownames(geneTab)
+  
+  ### genes = names(genes[genes<threshold])
+  # add error check if none pass
+  missingGenes<-setdiff(genes, allgenes)
+  if(length(missingGenes)>0){
+    cat("Missing genes: ", paste0(missingGenes, collapse=","), "\n")
+    genes<-intersect(genes, allgenes)
+  }
+
+  
+  # by default, order the genes by time of peak expression
+   genesOrdered = rownames(geneTab)[order(geneTab$peakTime)]
+   value<-expDat[genesOrdered,]
+
+ # value<-expDat[genes,]
+  if(toScale){
+      if(class(value)[1]!='matrix'){
+        value <- t(scale(Matrix::t(value)))
+      }
+      else{
+        value <- t(scale(t(value)))
+      }
+    }
+  value[value < limits[1]] <- limits[1]
+  value[value > limits[2]] <- limits[2]
+  groupNames<-unique(grps)
+  cells<-names(grps)  
+
+  xcol <- colorRampPalette(rev(brewer.pal(n = 12,name = "Paired")))(length(groupNames))
+    names(xcol) <- groupNames
+#    anno_colors <- list(group = xcol)
+    names(row_cols) = unique(as.vector(geneTab$epoch))
+    anno_colors <- list(group = xcol, epoch=row_cols )
+    xx<-data.frame(group=as.factor(grps))
+    rownames(xx)<-cells
+
+    geneX = as.data.frame(geneTab[,"epoch"])
+    rownames(geneX) = rownames(geneTab)
+    colnames(geneX) = "epoch"
+
+    cat("OK\n")
+
+  val_col <- colorRampPalette(rev(brewer.pal(n = 12,name = "Spectral")))(25)
+  
+  neps = length(unique(sampTab$epoch))
+
+  c_gaps = rep(0, neps-1)
+  epTally = table(sampTab$epoch)
+  c_gaps[1] = epTally[1]
+  for(i in seq(2,length(epTally) - 1)){
+    c_gaps[i] = c_gaps[i-1] + epTally[i]
+    cat(c_gaps[i],"\n")
+  }
+
+  g_gaps = length(unique(sampTab$epoch))
+  epTally = table(geneTab$epoch)
+  g_gaps[1] = epTally[1]
+  for(i in seq(2,length(epTally) - 1)){
+    g_gaps[i] = g_gaps[i-1] + epTally[i]
+    cat(g_gaps[i],"\n")
+  }
+
+
+  pheatmap(value, cluster_cols = FALSE, cluster_rows= FALSE, color=val_col,
+    show_colnames = FALSE, annotation_row = geneX,
+    annotation_col = xx,
+    annotation_names_col = FALSE, 
+    annotation_names_row = FALSE, 
+    annotation_colors = anno_colors, 
+    fontsize_row=fontsize_row,  gaps_row=g_gaps)
+
+
+}
+
 
 
 

@@ -277,6 +277,110 @@ tfnet_pagerank<-function(dynnet,tfs,weight_column="zscore",directed_graph=FALSE)
 }
 
 
+# return a list of cells and genes
+# cells: append to dynRes column of 'epoch'
+# genes: df of genename, peaktime, epoch, mean in epoch, pvalue, # ordered by absolute order
+
+assign_epochs_simple<-function(expSmoothed,dynRes,num_epochs=3,pThresh=0.01,toScale=FALSE){
+
+	# limit exp to dynamically expressed genes
+	exp<-expSmoothed[names(dynRes$genes[dynRes$genes<pThresh]),]
+	# scale the data if needed
+	if (toScale){
+		if(class(exp)[1]!='matrix'){
+        	exp <- t(scale(Matrix::t(exp)))
+      	}else{
+        	exp <- t(scale(t(exp)))
+      	}
+	}
+
+	navg<-ceiling(ncol(exp)*0.05)
+
+	# compute thresholds for each gene
+	# for each gene, order expression --- compute top as average of top 5%, bottom as average of bottom 5% 
+	# set threshold (active/inactive) as midpoint (or maybe 1/3 in case gene is expressed at different levels) between top and bottom
+	thresholds<-data.frame(gene=rownames(exp),thresh=rep(0,length(rownames(exp))))
+	rownames(thresholds)<-thresholds$gene
+	for (gene in rownames(exp)){
+		profile<-exp[gene,][order(exp[gene,],decreasing=FALSE)]
+		bottom<-mean(profile[1:navg])
+		top<-mean(profile[(length(profile)-navg):length(profile)])
+
+		thresh<-((top-bottom)*0.33) + bottom
+		thresholds[gene,"thresh"]<-thresh
+	}
+
+	# order cells in exp along pseudotime-- cells ordered in dynRes
+	t1 = dynRes$cells$pseudotime
+   	names(t1) = as.vector(dynRes$cells$cell_name)
+   	sort(t1, decreasing=FALSE)
+	exp<-exp[,names(t1)]
+
+	mean_expression<-data.frame(gene=character(),epoch=numeric(),mean_expression=numeric())
+	
+		# Divide epochs by pseudotime
+
+		# create empty list to contain active genes
+		epoch_names<-paste0(rep("epoch",num_epochs),seq(1:num_epochs))
+		epochs<-vector("list",length(epoch_names))
+		names(epochs)<-epoch_names
+		
+		# determine activity based on average expression in each epoch
+		ptmax<-max(dynRes$cells$pseudotime)
+		ptmin<-min(dynRes$cells$pseudotime)
+		chunk_size<-(ptmax-ptmin)/num_epochs
+
+		cellsEps = rep("", length(names(t1)))
+		names(cellsEps) = names(t1)
+
+		for (i in 1:length(epochs)){
+			lower_bound<-ptmin+((i-1)*chunk_size)
+			upper_bound<-ptmin+(i*chunk_size)
+			chunk_cells<-rownames(dynRes$cells[dynRes$cells$pseudotime>=lower_bound & dynRes$cells$pseudotime<=upper_bound,])
+			chunk<-exp[,chunk_cells]
+
+			chunk_df<-data.frame(means=rowMeans(chunk))
+			chunk_df<-cbind(chunk_df,thresholds)
+			chunk_df$active<-(chunk_df$means>=chunk_df$thresh)
+
+			epochs[[i]]<-rownames(chunk_df[chunk_df$active,])
+			genesPeakTimes = apply(chunk, 1, which.max)
+			gpt = as.vector(dynRes$cells[chunk_cells,][genesPeakTimes,]$pseudotime)
+
+			mean_expression<-rbind(mean_expression,data.frame(gene=rownames(chunk),epoch=rep(i,length(rownames(chunk))),mean_expression=rowMeans(chunk), peakTime = gpt))
+			cellsEps[chunk_cells] = epoch_names[i]
+		}
+
+		# assign genes to epochs
+		genes = unique(as.vector(mean_expression$gene))
+		cat("n genes: ",length(genes),"\n")
+ 		eps = rep("", length(genes))
+ 		geneEpPT = rep(0, length(genes))
+ 		epMean = rep(0, length(genes))
+
+  		names(eps) = genes
+  		names(geneEpPT) = genes
+  		names(epMean) = genes
+  		for(gene in genes){
+    		x = mean_expression[mean_expression$gene==gene,]
+    		xi = which.max(x$mean_expression)
+    		eps[[gene]] = as.vector(x[xi,]$epoch)
+    		geneEpPT[[gene]] = as.vector(x[xi,]$peakTime)
+    		epMean[[gene]] = max(x$mean_expression)
+  		}
+
+  		geneDF = data.frame(gene=genes, epoch=eps, peakTime = geneEpPT, epMean = epMean, pval=dynRes$genes[genes])
+  		cells2 = dynRes$cells[names(t1),]
+  		cells2 = cbind(cells2, epoch=cellsEps)
+  		#cells2 = 'a'
+
+#	mean_expression$epoch<-paste0("epoch",mean_expression$epoch)
+#	epochs$mean_expression<-mean_expression
+#	epochs
+list(genes=geneDF, cells=cells2)
+}
+
+
 
 
 
