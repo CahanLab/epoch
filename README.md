@@ -1,9 +1,9 @@
-# warpnet
-gene regulatory network reconstruction from scRNA-Seq using dynamic time warp
+# Epoch
+Gene regulatory network reconstruction from scRNA-seq data.
 
 
 ## Introduction
-warpNet: reconstruct GRNs from scRNA-Seq data useing trajectory inference and dynamic time warp.
+Epoch leverages single-cell transcriptomic data, single-cell analysis methods, and graph theoretic approaches to elucidate GRN structure and dynamic activity. 
 
 ## Data
 
@@ -19,217 +19,216 @@ And here is the ordering of the cells based on diffusion pseudotime (dpt):
 
 <img src="img/muscleDPT_072219.png">
 
-Now, let's use warpNet to reconstruct the GRNs that underpin this trajectory.
+Now, let's use Epoch to reconstruct the GRNs that underpin this trajectory.
 
+## Example Walk Thru 0: The Basics
 
-### Walk thru
-
-## Set up
+### Set up
 ```R
-
 library(igraph)
 library(qgraph)
+library(ggnetwork)
+library(gridExtra)
+library(pheatmap)
+library(RColorBrewer)
 library(loomR)
+library(reshape2)
 library(gam)
-
-library(devtools)
-install_github("pcahan1/singleCellNet")
-
 library(singleCellNet)
-
-install_github("pcahan1/warpnet")
-library(warpnet)
-
-# uncomment next line if you opt to use PAM instead of k-means. PAM is recommended
-# library(cluster)
-
 library(minet)
 
-mydate<-utils_myDate()
+install_github("pcahan1/epoch")
+library(epoch)
 
 ```
 
-## Load data
+### Load data
 ```R
-# Data is in the R package data folder
-pathToWarpNet = "../"
-mmTFs<-utils_loadObject( paste0(pathToWarpNet, "data/mmTFs.rda") )
-
-# remove Pcna and App which are not TFs. Please take note of other non-TFs that you find and create an issue so that we can remove them
-mmTFs <- setdiff(mmTFs, c("App", "Pcna"))
-
-list12<-loadLoomExpUMAP( paste0(pathToWarpNet, "data/adMuscle_E12_DPT_071919.loom", xname='leiden', has_dpt_groups=FALSE)
+list12<-loadDataFromLoom("data/adMuscle_E12_DPT_071919.loom")
 expDat<-list12[['expDat']]
-sampTab<-list12[['sampTab']] # holds the clustering and pca/umap info
+sampTab<-list12[['sampTab']] 
+expDat<-expDat[rowSums(expDat)!=0,]
 
-grps<-as.vector(sampTab$cluster)
-names(grps)<-as.vector(sampTab$cell_name)
+mmTFs<-utils_loadObject("data/mmTFs_123019.rda")
+mmTFs<-intersect(rownames(expDat),mmTFs)
 ```
 
-## Find dynamically expressed genes
+### Static Network Reconstruction
+Reconstruction occurs in three steps: 
+
+1. Find dynamically expressed genes
+2. Infer edges across dynamic genes using CLR (or other supported method)
+3. Perform optional cross-weighting to refine network structure
+  
 ```R
+# Find dynamically expressed genes
+xdyn <- findDynGenes(expDat, sampTab, group_column="leiden",pseudotime_column="dpt_pseudotime")
+pThresh<-0.05
+dgenes<-names(xdyn$genes)[xdyn$genes<pThresh]
 
-# PCA was done in scanpy/python and stored in sampTab
-system.time(xdyn <- findDynGenes(expDat, sampTab, c("0","1")))
+# Reconstruct and perform optional crossweighting
+grnDF <- reconstructGRN(expDat[dgenes,], mmTFs, method="pearson", zThresh=3)
+grnDF <- crossweight(grnDF,expDat[dgenes,])
 
-starting gammma...
-   user  system elapsed 
- 14.195   1.693  15.972
-```
-
-## Smooth expression
-```R
-ccells = xdyn$cells
-system.time(expSmoothed <- grnKsmooth(expDat, ccells))
-  user  system elapsed 
-  0.832   0.013   0.850 
-
- dim(expSmoothed)
-[1] 2074  262
-```
-
-## Cluster genes into epochs
-```R
-
-geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='kmeans')
-# you can also use pam to cluster the genes (recommended)
-# geneDF = caoGenes(expSmoothed, xdyn, k=3, pThresh=0.01, method='pam')
-
-gdfForHM = as.data.frame(geneDF[,"epoch"])
-rownames(gdfForHM) = rownames(geneDF)
-hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, toScale=TRUE)
-
-# you can also add colors ...
-# vcols1 = c("#feb24c", "#fc4e2a", "#b10026")
-# hm_dyn_clust(testSm, xdyn, geneAnn= gdfForHM, row_cols=vcols1, toScale=TRUE)
+# Example alternative: to reconstruct using GENIE3, run reconstructGRN_GENIE3 prior to crossweighting.
+# grnDF <- reconstructGRN_GENIE3(expDat[dgenes,], mmTFs, weightThresh=.5)
 
 ```
-
-<img src="img/heatmapDynGenes_072219.png">
-
-## Reconstruct GRN
- NB: only using un-smoothed data of dynamically expressed genes for GRN
-```R
-system.time(grnDF <- reconstructGRN(expDat[rownames(geneDF),], mmTFs, zThresh=3))
-   user  system elapsed 
-  0.215   0.023   0.238
-
-dim(grnDF)
-[1] 1803    4
-```
-
-## Add PT-based weight to GRN
-
-normDist is difference in peakTimes between TF and TG. Negative if the sign of the difference is inconsistent with predicted regulatory influence based on CLR network (from pearson)
-```R
-system.time(grnDF <- addDistWeight(grnDF, geneDF, ncells = ncol(expSmoothed), maxNeg= -0.2))
-   user  system elapsed 
-  0.183   0.004   0.186 
-
- grnDF[1:3,]
-    TG    TF   zscore      corr adjWeight   normDist
-1 Eya1 Meis1 3.022976 0.9911989  2.692854 0.09809160
-2 Eya1  Pcna 3.245824 0.9913648  3.075591 0.08282443
-3  Msc Dnmt1 3.006199 0.9881022  2.647884 0.10038168
-
-```
-
-## Need a function that will give a lot of information for each TF that can be used as a basis for better and more diverse way of selecting TFs
-Here is a start to do so
-```R
-tfTab = evalTFs(grnDF, geneDF)
-
- tfTab[order(tfTab$weightMean, decreasing=T),][1:10,]
-                 TF num_TFs epoch distToStart weightTotal weightMean
-Zeb1           Zeb1      15     2           3    76.14665   3.626031
-Hist1h2ak Hist1h2ak      36     1         199    58.97373   3.103880
-Hist1h2ae Hist1h2ae      36     1         193    20.54976   2.935680
-Myod1         Myod1      15     2          82   115.62926   2.890731
-Smyd1         Smyd1      25     3         202   115.27090   2.881773
-H2afx         H2afx      36     1         191    44.35505   2.772191
-Hmgb2         Hmgb2      36     1         177    65.87164   2.744652
-Mef2a         Mef2a      15     2         106    91.15749   2.604500
-Six2           Six2      36     1          99    20.82408   2.603010
-Prox1         Prox1      25     3         141    27.47881   2.498073
-```
-
-
-## Score TFs per epoch
+  
+The object grnDF contains the reconstructed network. TG and TF refer to target gene and transcription factor respectively. The column "zscore" is the network prior to crossweighting. The column "weighted_score" is the network after crossweighting:
 
 ```R
- pickExemplars(  geneDF,grnDF, topX=5, type='weight')
-$`1`
-[1] "H2afz" "Pax7"  "Meis1" "Hmgb2" "Msc"  
+head(grnDF)
 
-$`2`
-[1] "Myod1"  "Zbtb18" "Mef2a"  "Zeb1"   "Tmf1"  
+#     TG     TF   zscore       corr     offset weighted_score
+# 1 Eya1   Myog 4.178345 -0.2610965 -0.7714286       4.178345
+# 2 Eya1  Dmrt2 4.772928  0.2133278  0.8857143       4.772928
+# 3 Eya1   Lbx1 3.556854  0.2278536  2.0285714       3.556854
+# 4  Msc   Myog 5.340096 -0.4826167  2.5142857       5.340096
+# 5  Msc Cited1 5.910916  0.2740953 -1.0285714       5.910916
+# 6  Msc   Pax7 3.018219  0.2352322 -5.0571429       3.018219
 
-$`3`
-[1] "Smyd1" "Foxd3" "Rxrg"  "Mef2c" "Klf5" 
 ```
 
+### Dynamic Network Extraction
+We can further explore changes in the network across time by defining "epochs" or time periods in our trajectory, assigning genes to these epochs, and extracting a dynamic network across time.  
 
-## Plot these + top 5 positive regulons
+Defining epochs can be done in a number of ways. Here we show an example with method="pseudotime". This will partition cells based on pseudotime (pseudotime will be divided evenly, unless specified with parameter psuedotime_cuts). Althernatively, we can define epochs by "cell_order", in which cells are partitioned based on raw cell order rather than pseudotime, or "group", in which partitions are pre-defined.  
+
+For a simpler approach, assign_epoch_simple() will define and assign epochs based on maximum mean expression of a gene. This approach assumes genes cannot belong to more than one epoch.
+
 ```R
-iG_x = ig_exemplars(grnDF, geneDF, topTFs, topX=5) 
-x2 = ig_convertMedium(iG_x, vScale=2)
-e = get.edgelist(x2, names=FALSE)
-l <- qgraph.layout.fruchtermanreingold(e,vcount=vcount(x2))
-plot(x2, layout=l)
+xdyn<-define_epochs(xdyn,expDat[dgenes,],method="pseudotime",num_epochs=2)
+epoch_assignments<-assign_epochs(expDat[dgenes,],xdyn)
+
+dynamic_grn<-epochGRN(grnDF,epoch_assignments)
+
+#     from     to           name
+# 1 epoch1 epoch2 epoch1..epoch2
+# 2 epoch1 epoch1 epoch1..epoch1
+# 3 epoch2 epoch2 epoch2..epoch2
+
+
+# Example alternative:
+# assignment_list<-assign_epoch_simple(expDat[dgenes,],xdyn)
+
 ```
+  
+  The object dynamic_grn stores the dynamic network across epochs. The list includes active subnetworks at each epoch (in this example, "epoch1..epoch1" and "epoch2..epoch2") as well as potential transition networks (in this example, "epoch1..epoch2") describing how network topology transitions from one epoch to another.
 
-<img src="img/smallGRN_072419.png">
 
+### Influential TFs
+We can use Epoch to identify the most influential regulators in the reconstructed dynamic (or static) network. Here's an example of accomplishing this via a PageRank approach on the dynamic network. 
 
-## Here is a way to plot just the MST of the TF-only GRN
 ```R
-grnP1 = wn_ig_tabToIgraph(grnDF, geneDF,directed=T)
-newG1 = grnP1
-V(newG1)$size <- 8
-V(newG1)$frame.color <- "white"
-E(newG1)$arrow.mode <- 0
+gene_rank<-compute_pagerank(dynamic_grn,weight_column="weighted_score")
 
-eCols = list("1" = "red", "-1"= "blue")
-E(newG1)$color <- as.vector(unlist(eCols[as.character(E(newG1)$corr)]))
-V(newG1)$color <- vcols1[as.numeric(V(newG1)$epoch)]
-V(newG1)$size <- 4
-
-#now remove all non-regulators
-newG1 = delete.vertices(newG1, V(newG1)[ V(newG1)$type!="Regulator" ] )
-
-mstRes1 = mst(newG1, weights=  E(newG1)$weight, algorithm="prim")
-
-l1 <- layout_with_kk(mstRes1, weights=E(mstRes1)$weight)
-
-# you can resize based on node features
-# V(mstRes1)$size <- (1+ tfTab_P1[V(mstRes1),]$weightTotal/max(tfTab_P1$weightTotal))**2
-
-plot( mstRes1,layout=l1, vertex.label.dist=-0.5,  vertex.label.color="black", vertex.label.cex=0.6)
 ```
+  
+  The object gene_rank now contains a list of rankings for each epoch and transition network:
+  
+```R
+head(gene_rank$epoch1..epoch1)
+
+#         gene  page_rank is_regulator
+# Npm1   Npm1 0.05903642         TRUE
+# Pcna   Pcna 0.05570014         TRUE
+# Myod1 Myod1 0.05396667         TRUE
+# Ncl     Ncl 0.04885889         TRUE
+# Ybx1   Ybx1 0.03181650         TRUE
+# Hes6   Hes6 0.02794938         TRUE
+
+head(gene_rank$epoch2..epoch2)
+
+#         gene  page_rank is_regulator
+# Mef2c Mef2c 0.08434293         TRUE
+# Myog   Myog 0.07174052         TRUE
+# Smyd1 Smyd1 0.02578373         TRUE
+# Myod1 Myod1 0.02327698         TRUE
+# Ncl     Ncl 0.02247267         TRUE
+# Klf5   Klf5 0.02084391         TRUE
+
+```
+  
+
+### Plotting
+Epoch contains various plotting tools to visualize dynamic activity of genes and networks.
 
 
+#### We can visualize dynamically expressed genes across time
+This is particularly useful for verifying epoch assignments, and gauging how many epochs should occur in a trajectory.
+
+```R
+# First, smooth expression for a cleaner plot
+ccells <- xdyn$cells
+expSmoothed <- grnKsmooth(expDat, ccells, BW=0.1)
+
+# Plot a heatmap of the dynamic TFs
+tfstoplot<-intersect(dgenes,mmTFs)
+dynTFs<-xdyn
+dynTFs$genes<-dynTFs$genes[names(dynTFs$genes) %in% tfstoplot]
+hm_dyn(expSmoothed,dynTFs,topX=100)
+
+# Plot a heatmap of all dynamic TFs and target genes
+# dyngenes<-xdyn
+# dyngenes$genes<-dyngenes$genes[names(dynTFs$genes) %in% dgenes]
+# hm_dyn(expSmoothed,dyngenes,topX=100)
+
+```
+<img src="img/heatmapTFs_080720.png">
 
 
+#### We can plot a basic plot of the dynamic network
+```R
+plot_dynamic_network(dynamic_grn,mmTFs,only_TFs=TRUE,order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+```
+  
+<img src="img/dynamic_network_080720.png">  
+  
+  
+  To plot all targets, we can set only_TFs=FALSE. We can specify which epochs to plot using the "order" parameter. These coincide with names(dynamic_grn). If left empty, all epoch networks and transition networks will be plotted.  
+  
+  The same function can be used to plot a static network.  
+
+```R
+plot_dynamic_network(list(muscle_network=grnDF),mmTFs,only_TFs=TRUE)
+
+```
+  
+  
+<img src="img/static_network_080720.png">
 
 
+#### We can plot top regulators and their top targets
+In the same fashion as above, we can do this for both the dynamic network and static network. Limiting visualization to top regulators and their targets is less cumbersome than the above plots.
+
+```R
+plot_top_regulators(dynamic_grn, gene_rank, mmTFs, only_TFs=FALSE)
+
+# We can specify additional parameters including the number of top TFs and targets:
+# plot_top_regulators(dynamic_grn, gene_rank, tfs, numTopTFs=3, numTargets=5, only_TFs=TRUE, order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
+
+```
+<img src="img/topregulators_080720.png">
 
 
+#### We can plot top regulators of specified targets
+If we are interested in specific target genes, we can use one of the following functions to plot those and their top regulators as follows.
+
+```R
+interesting_targets<-c("Myf5","Myo10","Mypn","Myot","Tnnt2")
+
+# plot_targets_with_top_regulators(dynamic_grn,interesting_targets,weight_column="zscore")
+
+plot_targets_with_top_regulators_detail(dynamic_grn,interesting_targets,epoch_assignments,weight_column="zscore",declutter=FALSE)
 
 
+```
+<img src="img/targets_and_regulators_080720.png">
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+  
+  
 
 
 
