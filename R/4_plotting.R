@@ -35,8 +35,12 @@ plot_dynamic_network<-function(grn,tfs,only_TFs=TRUE,order=NULL,thresh=NULL){
     df$interaction[df$corr<0]<-"repression"
 
     net<-graph_from_data_frame(df[,c("TF","TG","interaction")],directed=FALSE)
-    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
-    tfnet$is_regulator<-as.character(tfnet$vertex.names %in% tfs)
+    #tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    layout<-layout_with_fr(net)
+    rownames(layout)<-V(net)$name
+    layout_ordered<-layout[V(net)$name,]
+    tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    tfnet$is_regulator<-as.character(tfnet$name %in% tfs)
     
     cols<-c("activation"="blue","repression"="red")
     g[[i]]<-ggplot()+
@@ -45,7 +49,7 @@ plot_dynamic_network<-function(grn,tfs,only_TFs=TRUE,order=NULL,thresh=NULL){
       geom_nodes(data=tfnet[tfnet$is_regulator=="TRUE",],aes(x=x, y=y, xend=xend, yend=yend),color="#8C4985",size=6,alpha=.8)+
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
       scale_color_manual(values=cols)+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
       theme_blank()+
       ggtitle(names(grn)[i])
 
@@ -114,8 +118,12 @@ plot_targets<-function(grn,gene_ranks,tfs,tfstoplot=NULL, numTargets=5, only_TFs
     }
 
     net<-graph_from_data_frame(topdf[,c("TF","TG","interaction")],directed=FALSE)
-    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
-    tfnet$is_regulator<-as.character(tfnet$vertex.names %in% tfstoplot[[epoch]])
+    #tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    layout<-layout_with_fr(net)
+    rownames(layout)<-V(net)$name
+    layout_ordered<-layout[V(net)$name,]
+    tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    tfnet$is_regulator<-as.character(tfnet$name %in% tfstoplot[[epoch]])
     
     #cols<-c("TRUE"="#8C4985","FALSE"="darkgray")
     cols<-c("activation"="blue","repression"="red")
@@ -126,7 +134,7 @@ plot_targets<-function(grn,gene_ranks,tfs,tfstoplot=NULL, numTargets=5, only_TFs
       geom_nodes(data=tfnet[tfnet$is_regulator=="TRUE",],aes(x=x, y=y, xend=xend, yend=yend),color="#8C4985",size=6,alpha=.8)+
       scale_color_manual(values=cols)+
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
       theme_blank()+
       ggtitle(names(grn)[i])
 
@@ -201,8 +209,16 @@ plot_top_regulators<-function(grn,gene_ranks,tfs,numTopTFs=5, numTargets=5, only
     }
 
     net<-graph_from_data_frame(topdf[,c("TF","TG","interaction")],directed=FALSE)
-    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
-    tfnet$is_regulator<-as.character(tfnet$vertex.names %in% topregs)
+    #tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    #tfnet$is_regulator<-as.character(tfnet$vertex.names %in% topregs)
+
+    layout<-layout_with_fr(net)
+    rownames(layout)<-V(net)$name
+    layout_ordered<-layout[V(net)$name,]
+    tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+
+    tfnet$is_regulator<-as.character(tfnet$name %in% topregs)
+
     
     #cols<-c("TRUE"="#8C4985","FALSE"="darkgray")
     cols<-c("activation"="blue","repression"="red")
@@ -213,7 +229,7 @@ plot_top_regulators<-function(grn,gene_ranks,tfs,numTopTFs=5, numTargets=5, only
       geom_nodes(data=tfnet[tfnet$is_regulator=="TRUE",],aes(x=x, y=y, xend=xend, yend=yend),color="#8C4985",size=6,alpha=.8)+
       scale_color_manual(values=cols)+
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=6, color="#8856a7")+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
       theme_blank()+
       ggtitle(names(grn)[i])
 
@@ -295,11 +311,16 @@ plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",ge
     }
     #plot 
     net<-graph_from_data_frame(edges_to_keep[,c("TF","TG")],directed=FALSE)
-    tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
-    tfnet$type<-"tf"
-    tfnet$type[tfnet$vertex.names %in% targets]<-"tg"
+    #tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
+    layout<-layout_with_fr(net)
+    rownames(layout)<-V(net)$name
+    layout_ordered<-layout[V(net)$name,]
+    tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
 
-    tfnet<-tfnet[!(is.na(tfnet$vertex.names)),]
+    tfnet$type<-"tf"
+    tfnet$type[tfnet$name %in% targets]<-"tg"
+
+    tfnet<-tfnet[!(is.na(tfnet$name)),]
 
     cols<-c("tf"="darkgray","tg"="#F5663A")
 
@@ -308,9 +329,9 @@ plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",ge
       geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type,color=type),size=6,alpha=.8)+
       #scale_color_manual(values=c("#F5663A","#8C4985"),labels=c("tg","tf"))+
       scale_color_manual(values=cols)+
-      geom_nodes(data=tfnet[tfnet$vertex.names %in% targets,],aes(x=x,y=y,xend=xend,yend=yend),shape=24,size=6,color="black",stroke=0.25)+
+      geom_nodes(data=tfnet[tfnet$name %in% targets,],aes(x=x,y=y,xend=xend,yend=yend),shape=24,size=6,color="black",stroke=0.25)+
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=3, color="#8856a7")+
-      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")+
+      geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
       theme_blank()+theme(legend.position="none")+
       ggtitle(names(grn)[i])
 
@@ -339,25 +360,25 @@ plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",ge
 #'
 plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL,fixed_layout=TRUE,layout_alg="fr",declutter=TRUE){
   g<-list()
-
+  
   mean_expression<-epochs$mean_expression
-
+  
   if (!is.null(order)){
     grn<-grn[order]
   }
-
+  
   #----------- Extract graphs for each known target network------------
   ktgraph<-list()
   for (i in 1:length(grn)){
     epoch<-names(grn)[i]
     df<-grn[[epoch]]
-
+    
     #look for targets in epoch GRN
     tgs<-as.character(df[df$TG %in% targets,"TG"])
     if (length(tgs)==0){
       next
     }
-
+    
     df$interaction<-"activation"
     df$interaction[df$corr<0]<-"repression"
     #find top regulators for each target
@@ -372,34 +393,34 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
         rank_regs<-rank[regs_of_targets,]
         rank_regs<-rank_regs[order(rank_regs$page_rank,decreasing=TRUE),]
         top_regs<-rownames(rank_regs)[1:numTopRegulators]
-
+        
         edges<-df[df$TG==tg,]
         edges<-edges[edges$TF %in% top_regs,c("TF","TG","interaction")]
-
+        
         edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
-
+        
         #random little hack to fix stupid issue with ggnetwork...
         if(nrow(edges_to_keep)==1){
           edges_to_keep<-rbind(edges_to_keep,data.frame(TF=NA,TG=NA))
         }
-
+        
       }
     }else{
       for (tg in tgs){
         edges<-df[df$TG==tg,]
         edges<-edges[order(edges[,weight_column],decreasing=TRUE),]
         edges<-edges[1:numTopRegulators,c("TF","TG","interaction")]
-
+        
         edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
       }
-    
+      
     }
-
+    
     ktgraph[[epoch]]<-edges_to_keep
-
+    
   }
-
-
+  
+  
   # ---------- compute node coordinates if fixed_layout==TRUE -------------
   if (fixed_layout){
     # # using sna package
@@ -409,14 +430,14 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
     # agg<-as_adjacency_matrix(graph_from_data_frame(agg,directed=FALSE))
     # # assign layout-- fruchterman-reingold 
     # layout<-sna::gplot.layout.fruchtermanreingold(as.matrix(agg),layout.par = c())
-
+    
     # using igraph
     # aggregate epoch networks
     agg<-dplyr::bind_rows(ktgraph)[,c("TF","TG","interaction")]
     agg<-agg[!duplicated(agg),]
     agg<-graph_from_data_frame(agg,directed=FALSE)
     agg<-delete_vertices(agg,v=V(agg)$name[is.na(V(agg)$name)])
-
+    
     # assign layout
     if (layout_alg=="sugiyama"){
       layout<-layout_with_sugiyama(agg)
@@ -432,31 +453,31 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       for (i in 1:length(ktgraph)){
         temp_splits[[i]]<-union(ktgraph[[i]]$TF,ktgraph[[i]]$TG)
       }
-
+      
       rownames(agg_vtcs)<-agg_vtcs$name
       agg_vtcs$avg_epoch<-NA
       for(row in rownames(agg_vtcs)){
         agg_vtcs[row,"avg_epoch"]<-mean(which(sapply(temp_splits,FUN=function(x) row %in% x)))
       }
-
+      
       layout[,1]<-jitter(agg_vtcs$avg_epoch,factor=5)
-
+      
     }
     else{
       # default to fruchterman-reingold
       layout<-layout_with_fr(agg)
     }
-
+    
     rownames(layout)<-V(agg)$name
-
+    
   }
-
-
+  
+  
   # -------------PLOT each network--------------
   for (i in 1:length(grn)){
     epoch<-names(grn)[i]
     edges_to_keep<-ktgraph[[epoch]]
-
+    
     # Covert to igraph object
     if (fixed_layout){
       # make network
@@ -464,15 +485,15 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       # add vertices (no edges) that aren't in epoch network
       addvtcs<-V(agg)$name[!(V(agg)$name %in% V(net)$name)]
       net<-add_vertices(net,length(addvtcs),attr=list(name=addvtcs))
-
+      
     }else{
       net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
     }
-
+    
     # remove nodes with name NA
     net<-delete_vertices(net,v=V(net)$name[is.na(V(net)$name)])
     net<-delete_vertices(net,v=V(net)$name[V(net)$name=="NA"])      # stupid hack
-
+    
     # add expression values as node attribute
     expression_from<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][1],]
     expression_to<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][2],]
@@ -483,25 +504,28 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       #transition network expression of TF from source epoch, expression of target from target epoch
       V(net)$expression<-ifelse(V(net)$name %in% edges_to_keep$TF,expression_from$mean_expression[match(V(net)$name,expression_from$gene)],expression_to$mean_expression[match(V(net)$name,expression_to$gene)])
     }
-
+    
     # convert to ggnetwork object
     if (fixed_layout){
       # order layout
       layout_ordered<-layout[V(net)$name,]
       tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
-      }else{
-        tfnet<-ggnetwork(net,layout="fruchtermanreingold",cell.jitter=0)
-      }
+    }else{
+      layout<-layout_with_fr(net)
+      rownames(layout)<-V(net)$name
+      layout_ordered<-layout[V(net)$name,]
+      tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    }
     
     # specify if node is known regulator
     tfnet$type<-"regulator"
-    tfnet$type[tfnet$vertex.names %in% targets]<-"known target"
+    tfnet$type[tfnet$name %in% targets]<-"known target"
     tfnet$type<-factor(tfnet$type,levels=c("regulator","known target"))
-
-    tfnet<-tfnet[!(is.na(tfnet$vertex.names)),]
-
+    
+    tfnet<-tfnet[!(is.na(tfnet$name)),]
+    
     cols<-c("activation"="blue","repression"="red")
-
+    
     g[[i]]<-ggplot()+
       geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,color=interaction),size=0.75,curvature=0.1, alpha=.6)+
       geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type,size=expression,alpha=expression),color="black")+
@@ -510,26 +534,26 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
       #geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=3, color="#8856a7")+
       theme_blank()+
       ggtitle(names(grn)[i])
-
+    
     if(declutter){
       keep<-union(edges_to_keep$TF,edges_to_keep$TG)
-      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet[tfnet$vertex.names %in% keep,],aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet[tfnet$name %in% keep,],aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")
     }else{
-      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=vertex.names),size=2.5, color="#5A8BAD")
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")
     }
-
+    
     common_legend<-get_legend(g[[i]])
-
+    
     g[[i]]<-g[[i]]+theme(legend.position="none")
-
+    
   }
-
+  
   # ------- Facet Plots --------
   g[sapply(g,is.null)]<-NULL
-
+  
   g$legend<-common_legend
   do.call(grid.arrange,g)
-
+  
 }
 
 #helpful piece of code to extract a legend

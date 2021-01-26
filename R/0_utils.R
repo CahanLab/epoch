@@ -36,7 +36,7 @@ loadDataFromLoom<-function(path,
     stop("elements in col_attrs not in metadata.")
   }
 
-  sampTab<-lfile$get.attribute.df(attribute.names = col_attrs, col.names=obs_names)
+  sampTab<-lfile$get.attribute.df(attributes = col_attrs, col.names=obs_names)
 
   geneNames<-lfile[["row_attrs"]][[var_names]][]
   cellNames<-lfile[["col_attrs"]][[obs_names]][]

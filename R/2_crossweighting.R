@@ -8,7 +8,12 @@
 #' 
 #' @export
 #'
-crossweight<-function(grnTab,expSmoothed,lag=floor(ncol(expSmoothed)/5),min=ceiling(ncol(expSmoothed)/50),max=floor(ncol(expSmoothed)/12)){
+crossweight<-function(grnTab,
+					expSmoothed,
+					lag=floor(ncol(expSmoothed)/5),
+					min=ceiling(ncol(expSmoothed)/50),
+					max=floor(ncol(expSmoothed)/12),
+					filter_thresh=0){
 
 
 	grnTab$TG<-as.character(grnTab$TG)
@@ -24,6 +29,8 @@ crossweight<-function(grnTab,expSmoothed,lag=floor(ncol(expSmoothed)/5),min=ceil
 	}
 
 	grnTab$weighted_score<-weighted_score
+
+	grnTab<-grnTab[grnTab$weighted_score>filter_thresh,]
 
 	grnTab
 }
