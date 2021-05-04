@@ -6,9 +6,9 @@
 #'
 #' Define epochs
 #' 
-#' @param dynRes results of running findDynGenes, or a list of results of running findDynGenes per path. If list, names should match names of expSmoothed.
-#' @param expSmoothed smoothed expression matrix, or a list of smoothed expression per path. If list, names should match names of dynRes.
-#' @param method method to define epochs. Either "pseudotime", "cell_order", or "group"
+#' @param dynRes results of running findDynGenes, or a list of results of running findDynGenes per path. If list, names should match names of expDat.
+#' @param expDat genes-by-cells expression matrix, or a list of expression matrices per path. If list, names should match names of dynRes.
+#' @param method method to define epochs. Either "pseudotime", "cell_order", "group", "con_similarity"
 #' @param num_epochs number of epochs to define. Ignored if epoch_transitions, pseudotime_cuts, or group_assignments are provided.
 #' @param pseudotime_cuts vector of pseudotime cutoffs. If NULL, cuts are set to max(pseudotime)/num_epochs.
 #' @param group_assignments a list of vectors where names(assignment) are epoch names, and vectors contain groups belonging to corresponding epoch
@@ -17,17 +17,19 @@
 #' @export
 #'
 define_epochs<-function(dynRes,
-						expSmoothed,
+						expDat,
 						method="pseudotime",
 						num_epochs=2,
 						pseudotime_cuts=NULL,
-						group_assignments=NULL){
+						group_assignments=NULL,
+						pThresh_dyn=0.05,
+						winSize=5){
 
-	# put dynRes and expSmoothed into list, if not already
+	# put dynRes and expDat into list, if not already
 	# for cleaner code later on... just put everything is in list.
 	if(class(dynRes[[1]])!="list"){
 		dynRes<-list(dynRes)
-		expSmoothed<-list(expSmoothed)
+		expDat<-list(expDat)
 	}
 
 	new_dynRes<-list()
@@ -56,7 +58,7 @@ define_epochs<-function(dynRes,
 		if (method=="pseudotime"){
 			if (is.null(pseudotime_cuts)){
 				# if pseudotime_cuts NULL, then split pseudotime evenly (note: this is not the same as using cell_order)
-				pseudotime_cuts<-seq(0,max(path_dyn$cells$pseudotime),max(path_dyn$cells$pseudotime)/num_epochs)
+				pseudotime_cuts<-seq(min(path_dyn$cells$pseudotime),max(path_dyn$cells$pseudotime),(max(path_dyn$cells$pseudotime)-min(path_dyn$cells$pseudotime))/num_epochs)
 				pseudotime_cuts<-pseudotime_cuts[-length(pseudotime_cuts)]
 				pseudotime_cuts<-pseudotime_cuts[-1]
 			}
@@ -72,6 +74,12 @@ define_epochs<-function(dynRes,
 			}
 
 			path_dyn<-split_epochs_by_group(path_dyn,group_assignments)
+		}
+
+		# define by consecutive similarity
+		if (method=="con_similarity"){
+			cuts = find_cuts_by_similarity(expDat[[1]], path_dyn, winSize=winSize, pThresh_dyn=pThresh_dyn)
+			path_dyn<-split_epochs_by_pseudotime(path_dyn,cuts)
 		}
 
 		new_dynRes[[path]]<-path_dyn
@@ -148,29 +156,85 @@ split_epochs_by_group<-function(dynRes,assignment){
 }
 
 
+#' Returns cuts to define epochs
+#'
+#' Returns cuts to define epochs
+#' 
+#' @param expDat genes-by-cells expression matrix
+#' @param dynRes individual path result of running define_epochs
+#' @param winSize number of cells to each side to compare each cell to
+#' @param pThresh_dyn pval threshold if gene is dynamically expressed
+#'
+#' @return vector of  pseudotimes at which to cut data into epochs
+#' @export
+#'
+find_cuts_by_similarity<-function(
+	expDat,
+	dynRes,
+	winSize=5,
+	pThresh_dyn=0.05){
+​
+	# limit exp to dynamically expressed genes
+	expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
+	cat(nrow(expDat),"\n")
+​
+	# compute PCC between all cells -- just easier this way
+	xcorr = cor(expDat[,rownames(dynRes$cells)])
+	xdist = 1 - xcorr
+	mydists = rep(1, nrow(xdist)-1)
+	pShift = rep(0, nrow(xdist)-1)
+	end = nrow(xdist)
+	for(i in 2 : end-1){
+  		xi = seq(i-1 : max(1, i-winSize))
+  		yi = seq(i+1 : min(end, i+winSize))
+  		xxx = which.max( c(mean(xdist[i,xi]), mean(xdist[i,yi])))
+  		pShift[i] = c(0,1)[xxx]
+  		mydists[i] = mean(xdist[i,xi]) - mean(xdist[i,yi])
+	}
+	# the first one is bogus
+	cuts_index = which(pShift==1)
+	cuts_index = cuts_index[2:length(cuts_index)]
+	cat("Cut points: ",dynRes$cells[cuts_index,]$pseudotime, "\n")
+​
+	# It is kinda confusing, but we want the pt of the cell just prior to the determined cutpoint
+	# But, because of the way that this is indexed, we don't need to adjust anything
+	dynRes$cells[cuts_index,]$pseudotime
+}
+
+
+
+
 #' Assigns genes to epochs
 #'
 #' Assigns genes to epochs
 #' 
-#' @param expSmoothed smoothed expression matrix
+#' @param expDat genes-by-cells expression matrix 
 #' @param dynRes individual path result of running define_epochs
 #' @param method method of assigning epoch genes, either "active_expression" (looks for active expression in epoch) or "DE" (looks for differentially expressed genes per epoch)
 #' @param pThresh_dyn pval threshold if gene is dynamically expressed
 #' @param pThresh_DE pval if gene is differentially expressed. Ignored if method is active_expression.
+#' @param active_thresh value between 0 and 1. Percent threshold to define activity
 #' @param toScale whether or not to scale the data
+#' @param forceGenes whether or not to rescue orphan dyanmic genes, forcing assignment into epoch with max expression.
 #'
 #' @return epochs a list detailing genes active in each epoch
 #' @export
 #'
-assign_epochs<-function(expSmoothed,
+assign_epochs<-function(expDat,
 						dynRes,
 						method='active_expression',
 						pThresh_dyn=0.05,
 						pThresh_DE=0.05,
-						toScale=FALSE){
+						active_thresh=0.33,
+						toScale=FALSE,
+						forceGenes=TRUE){
+
+	if (active_thresh<0 | active_thresh>1){
+		stop("active_thresh must be between 0 and 1.")
+	}
 
 	# limit exp to dynamically expressed genes
-	exp<-expSmoothed[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
+	exp<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
 	# scale the data if needed
 	if (toScale){
 		if(class(exp)[1]!='matrix'){
@@ -197,7 +261,7 @@ assign_epochs<-function(expSmoothed,
 		bottom<-mean(profile[1:navg])
 		top<-mean(profile[(length(profile)-navg):length(profile)])
 
-		thresh<-((top-bottom)*0.33) + bottom
+		thresh<-((top-bottom)*active_thresh) + bottom
 		thresholds[gene,"thresh"]<-thresh
 	}
 
@@ -269,6 +333,19 @@ assign_epochs<-function(expSmoothed,
 
 	}
 
+	# some dynamically assigned genes may not be assigned to any epoch
+	# if forceGenes, then assign these orphan genes to the epoch in which they have max expression
+	if(forceGenes){
+		assignedGenes = unique(unlist(epochs))
+		orphanGenes = setdiff(rownames(exp), assignedGenes)
+		cat("There are ", length(orphanGenes), " orphan genes\n")
+		for(oGene in orphanGenes){
+			xdat = mean_expression[mean_expression$gene==oGene,]
+			ep = xdat[which.max(xdat$mean_expression),]$epoch
+			epochs[[ep]] = append(epochs[[ep]], oGene)
+		}
+	}
+
 	epochs$mean_expression<-mean_expression
 
 	epochs
@@ -279,10 +356,10 @@ assign_epochs<-function(expSmoothed,
 #'
 #' @export
 #'
-assign_epochs_simple<-function(expSmoothed,dynRes,num_epochs=3,pThresh=0.01,toScale=FALSE){
+assign_epochs_simple<-function(expDat,dynRes,num_epochs=3,pThresh=0.01,toScale=FALSE){
 
 	# limit exp to dynamically expressed genes
-	exp<-expSmoothed[names(dynRes$genes[dynRes$genes<pThresh]),]
+	exp<-expDat[names(dynRes$genes[dynRes$genes<pThresh]),]
 	# scale the data if needed
 	if (toScale){
 		if(class(exp)[1]!='matrix'){
@@ -657,6 +734,49 @@ tfnet_pagerank<-function(dynnet,tfs,weight_column="zscore",directed_graph=FALSE)
 }
 
 
+#' Function to compute betweenness and degree
+#'
+#' @param dynnet result of dynamic GRN reconstruction
+#' @param weight_column name of column in dynnet to weight edges
+#' @param directed_graph if GRN is directed or not
+#'
+#' @return list of dataframes of active TFs in each epoch and transition, ranked by betweenness*degree
+#' @export
+compute_betweenness_degree<-function(dynnet,weight_column="zscore",directed_graph=FALSE){
+
+  ranks<-sapply(names(dynnet), function (x) NULL)
+  for (net_name in names(dynnet)){
+    df<-dynnet[[net_name]]
+    
+    df<-df[,c("TF","TG",weight_column)]
+    colnames(df)<-c("TF","TG","weight")
+
+    net<-graph_from_data_frame(df,directed=directed_graph)
+    b<-betweenness(net,directed=directed_graph,normalized=TRUE)
+    b<-as.data.frame(b)
+
+    degree<-degree(net,mode="all",normalized=TRUE)
+    degree<-data.frame(degree[rownames(b)])
+
+	b<-cbind(b,degree)
+	colnames(b)<-c("betweenness","degree")
+	b$temp<-b$betweenness*b$degree
+
+	b<-b[order(b$temp,decreasing=TRUE),]
+	b$temp<-NULL
+
+	b$gene<-rownames(b)
+	b<-b[,c("gene","betweenness","degree")]
+
+	b$is_regulator<-FALSE
+    b$is_regulator[b$gene %in% unique(df$TF)]<-TRUE
+
+    ranks[[net_name]]<-b
+  }
+  
+  ranks
+
+}
 
 
 

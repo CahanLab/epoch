@@ -1,5 +1,5 @@
 # Epoch
-Gene regulatory network reconstruction from scRNA-seq data.
+Dynamic gene regulatory network reconstruction from scRNA-seq data.
 
 
 ## Introduction
@@ -66,9 +66,9 @@ xdyn <- findDynGenes(expDat, sampTab, group_column="leiden",pseudotime_column="d
 pThresh<-0.05
 dgenes<-names(xdyn$genes)[xdyn$genes<pThresh]
 
-# Reconstruct and perform optional crossweighting
+# Reconstruct and perform crossweighting
 grnDF <- reconstructGRN(expDat[dgenes,], mmTFs, method="pearson", zThresh=3)
-grnDF <- crossweight(grnDF,expDat[dgenes,])
+grnDF <- crossweight(grnDF,expDat,xdyn,filter_thresh=0)
 
 # Example alternative: to reconstruct using GENIE3, run reconstructGRN_GENIE3 prior to crossweighting.
 # grnDF <- reconstructGRN_GENIE3(expDat[dgenes,], mmTFs, weightThresh=.5)
@@ -80,13 +80,13 @@ The object grnDF contains the reconstructed network. TG and TF refer to target g
 ```R
 head(grnDF)
 
-#     TG     TF   zscore       corr     offset weighted_score
-# 1 Eya1   Myog 4.178345 -0.2610965 -0.7714286       4.178345
-# 2 Eya1  Dmrt2 4.772928  0.2133278  0.8857143       4.772928
-# 3 Eya1   Lbx1 3.556854  0.2278536  2.0285714       3.556854
-# 4  Msc   Myog 5.340096 -0.4826167  2.5142857       5.340096
-# 5  Msc Cited1 5.910916  0.2740953 -1.0285714       5.910916
-# 6  Msc   Pax7 3.018219  0.2352322 -5.0571429       3.018219
+#    TG     TF   zscore       corr    offset weighted_score
+#1 Eya1  Dmrt2 4.772928  0.2133278  2.371429       4.772928
+#2 Eya1   Lbx1 3.556854  0.2278536 -5.057143       3.556854
+#3 Eya1   Myog 4.178345 -0.2610965 -7.942857       4.178345
+#4  Msc  Basp1 4.161489  0.3269736 -3.400000       4.161489
+#5  Msc Cited1 5.910916  0.2740953 -1.342857       5.910916
+#6  Msc  Mef2c 4.542714 -0.4582923 11.114286       1.176779
 
 ```
 
@@ -130,26 +130,57 @@ gene_rank<-compute_pagerank(dynamic_grn,weight_column="weighted_score")
 ```R
 head(gene_rank$epoch1..epoch1)
 
-#         gene  page_rank is_regulator
-# Npm1   Npm1 0.05903642         TRUE
-# Pcna   Pcna 0.05570014         TRUE
-# Myod1 Myod1 0.05396667         TRUE
-# Ncl     Ncl 0.04885889         TRUE
-# Ybx1   Ybx1 0.03181650         TRUE
-# Hes6   Hes6 0.02794938         TRUE
+#        gene  page_rank is_regulator
+# Npm1   Npm1 0.03762543         TRUE
+# Myod1 Myod1 0.03364017         TRUE
+# Ncl     Ncl 0.03127770         TRUE
+# Cenpa Cenpa 0.02515734         TRUE
+# Tcf19 Tcf19 0.01872991         TRUE
+# Myf5   Myf5 0.01835270         TRUE
 
 head(gene_rank$epoch2..epoch2)
 
-#         gene  page_rank is_regulator
-# Mef2c Mef2c 0.08434293         TRUE
-# Myog   Myog 0.07174052         TRUE
-# Smyd1 Smyd1 0.02578373         TRUE
-# Myod1 Myod1 0.02327698         TRUE
-# Ncl     Ncl 0.02247267         TRUE
-# Klf5   Klf5 0.02084391         TRUE
+#          gene  page_rank is_regulator
+# Myog     Myog 0.06439718         TRUE
+# Mef2c   Mef2c 0.05445604         TRUE
+# Myod1   Myod1 0.01987631         TRUE
+# Smyd1   Smyd1 0.01777028         TRUE
+# Ncl       Ncl 0.01706675         TRUE
+# Zbtb18 Zbtb18 0.01263173         TRUE
 
 ```
   
+  We can also use betweenness and degree. 
+
+```R
+another_gene_rank<-compute_betweenness_degree(dynamic_grn,weight_column="weighted_score")
+
+```
+The object another_gene_rank now contains a list of rankings for each epoch and transition network:
+  
+```R
+head(another_gene_rank$epoch1..epoch1)
+
+#        gene betweenness     degree is_regulator
+# Ncl     Ncl  0.23020757 0.15887850         TRUE
+# Npm1   Npm1  0.21577234 0.16448598         TRUE
+# Myod1 Myod1  0.17964927 0.18504673         TRUE
+# Ybx1   Ybx1  0.13691064 0.09719626         TRUE
+# Hes6   Hes6  0.11030138 0.10093458         TRUE
+# Myf5   Myf5  0.08138892 0.10841121         TRUE
+
+head(another_gene_rank$epoch2..epoch2)
+
+#        gene betweenness     degree is_regulator
+# Mef2c Mef2c   0.5390451 0.42780027         TRUE
+# Myog   Myog   0.2044352 0.32658570         TRUE
+# Klf5   Klf5   0.2290878 0.10931174         TRUE
+# Casz1 Casz1   0.2052850 0.09041835         TRUE
+# Smyd1 Smyd1   0.1158734 0.15519568         TRUE
+# Arx     Arx   0.1736952 0.07962213         TRUE
+
+```
+
 
 ### Plotting
 Epoch contains various plotting tools to visualize dynamic activity of genes and networks.
@@ -210,7 +241,7 @@ plot_top_regulators(dynamic_grn, gene_rank, mmTFs, only_TFs=FALSE)
 # plot_top_regulators(dynamic_grn, gene_rank, tfs, numTopTFs=3, numTargets=5, only_TFs=TRUE, order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
 
 ```
-<img src="img/topregulators_080720.png">
+<img src="img/topregulators_050421.png">
 
 
 #### We can plot top regulators of specified targets
@@ -221,11 +252,11 @@ interesting_targets<-c("Myf5","Myo10","Mypn","Myot","Tnnt2")
 
 # plot_targets_with_top_regulators(dynamic_grn,interesting_targets,weight_column="zscore")
 
-plot_targets_with_top_regulators_detail(dynamic_grn,interesting_targets,epoch_assignments,weight_column="zscore",declutter=FALSE)
+plot_targets_with_top_regulators_detail(dynamic_grn,interesting_targets,epoch_assignments,weight_column="zscore",declutter=FALSE,order=c("epoch1..epoch1","epoch1..epoch2","epoch2..epoch2"))
 
 
 ```
-<img src="img/targets_and_regulators_080720.png">
+<img src="img/targets_and_regulators_050421.png">
 
   
   

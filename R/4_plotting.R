@@ -680,7 +680,14 @@ hm_dyn<-function(
   limits=c(0,10),
   toScale=FALSE,
   fontsize_row=4,
-  geneAnn = FALSE){
+  geneAnn = FALSE,
+  anno_colors=NULL,
+  show_rownames=TRUE){
+
+  colors<-NULL
+  if(!is.null(anno_colors)){
+    colors<-anno_colors
+  }
 
   require(viridis)
 
@@ -747,19 +754,37 @@ hm_dyn<-function(
    #val_col <- colorRampPalette(brewer.pal(n = 12,name = "Spectral"))(100)
    if(is.data.frame(geneAnn)){
       cat("right spot\n")
-      pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
-        show_colnames = FALSE, annotation_row = geneAnn,
+      if(is.null(colors)){
+        pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
+        show_colnames = FALSE, annotation_row = geneAnn, show_rownames=show_rownames,
         annotation_col = xx,
         annotation_names_col = FALSE, 
         annotation_colors = anno_colors, 
         fontsize_row=fontsize_row)
+      }
+      else{
+        pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
+        show_colnames = FALSE, annotation_row = geneAnn,show_rownames=show_rownames,
+        annotation_col = xx,
+        annotation_names_col = FALSE, 
+        annotation_colors = colors, 
+        fontsize_row=fontsize_row)
+      }
     }
     else{
-  pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
-        show_colnames = FALSE, annotation_names_row = FALSE,
+      if(is.null(colors)){  
+        pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
+        show_colnames = FALSE, annotation_names_row = FALSE,show_rownames=show_rownames,
 ##        annotation_col = annTab,
         annotation_col = xx,
         annotation_names_col = FALSE, annotation_colors = anno_colors, fontsize_row=fontsize_row, border_color=NA)
+        }else{
+          pheatmap(value, cluster_rows = cRow, cluster_cols = cCol, color=val_col,
+          show_colnames = FALSE, annotation_names_row = FALSE,show_rownames=show_rownames,
+##        annotation_col = annTab,
+          annotation_col = xx,
+          annotation_names_col = FALSE, annotation_colors = colors, fontsize_row=fontsize_row, border_color=NA)
+        }
 }
 }
 
