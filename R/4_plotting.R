@@ -358,7 +358,16 @@ plot_targets_with_top_regulators<-function(grn,targets,weight_column="zscore",ge
 #' 
 #' @export
 #'
-plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_column="zscore",gene_ranks=NULL,numTopRegulators=5,order=NULL,fixed_layout=TRUE,layout_alg="fr",declutter=TRUE){
+plot_targets_with_top_regulators_detail<-function(grn,
+                                                  targets,
+                                                  epochs,
+                                                  weight_column="zscore",
+                                                  gene_ranks=NULL,
+                                                  numTopRegulators=5,
+                                                  order=NULL,
+                                                  fixed_layout=TRUE,
+                                                  layout_alg="fr",
+                                                  declutter=TRUE){
   g<-list()
   
   mean_expression<-epochs$mean_expression
@@ -555,6 +564,232 @@ plot_targets_with_top_regulators_detail<-function(grn,targets,epochs,weight_colu
   do.call(grid.arrange,g)
   
 }
+
+
+
+# Updated plot_targets_with_top_regulators_detail 5/4/21
+# Make mean expression optional
+# Retain edges in epochs if TF expressed and edge is in epoch subnetwork
+# Remove layout_alg option-- plot in FR
+
+#' Updated plot of top regulators given targets in dynamic networks based on a weight column.
+#' Top regulators computed for each epoch, but maintained in plot across epochs if present in epoch subnetwork.
+#'
+#'
+#' @param grn the result of running epochGRN
+#' @param targets targets
+#' @param epochs result of running assign_epochs
+#' @param weight_column column name containing reconstruction weights to use
+#' @param numTopRegulators number of top regulators to plot
+#' @param order which epochs or transitions to plot
+#' @param fixed_layout whether or not to fix node positions across epoch networks
+#' @param declutter if TRUE, will only label nodes with active interactions in given network
+#' @param show_expression if TRUE, size and shade of node indicates mean expression in a given epoch.
+#' 
+#' @return 
+#' 
+#' @export
+#'
+plot_targets_and_regulators<-function(grn,
+                                      targets,
+                                      epochs=NULL,
+                                      weight_column="zscore",
+                                      gene_ranks=NULL,
+                                      numTopRegulators=5,
+                                      order=NULL,
+                                      fixed_layout=TRUE,
+                                      declutter=TRUE,
+                                      show_expression=TRUE,
+                                      node_size=5,
+                                      label_size=2,
+                                      title_size=10,
+                                      legend_size=8){
+  g<-list()
+  
+  if (!is.null(epochs) & ("mean_expression" %in% names(epochs))){
+    mean_expression<-epochs$mean_expression
+  }else{
+    show_expression<-FALSE
+  }
+
+  if (!is.null(order)){
+    grn<-grn[order]
+  }
+  
+  #----------- Extract graphs for each known target network------------
+  ktgraph<-list()
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    df<-grn[[epoch]]
+    
+    #look for targets in epoch GRN
+    tgs<-as.character(df[df$TG %in% targets,"TG"])
+    if (length(tgs)==0){
+      next
+    }
+    
+    df$interaction<-"activation"
+    df$interaction[df$corr<0]<-"repression"
+    #find top regulators for each target
+    edges_to_keep<-data.frame(TF=character(),TG=character())
+    if(!is.null(gene_ranks) & (weight_column %in% colnames(gene_ranks[[1]]))){
+      for (tg in tgs){
+        rank<-gene_ranks[[epoch]]
+        regs_of_targets<-as.character(df[df$TG==tg,"TF"])
+        rank_regs<-rank[regs_of_targets,]
+        rank_regs<-rank_regs[order(rank_regs[,weight_column],decreasing=TRUE),]
+        top_regs<-rownames(rank_regs)[1:numTopRegulators]
+        
+        edges<-df[df$TG==tg,]
+        edges<-edges[edges$TF %in% top_regs,c("TF","TG","interaction")]
+        
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
+        
+        #random little hack to fix stupid issue with ggnetwork...
+        if(nrow(edges_to_keep)==1){
+          edges_to_keep<-rbind(edges_to_keep,data.frame(TF=NA,TG=NA))
+        }
+        
+      }
+    }else if(weight_column %in% colnames(df)){
+      for (tg in tgs){
+        edges<-df[df$TG==tg,]
+        edges<-edges[order(edges[,weight_column],decreasing=TRUE),]
+        edges<-edges[1:numTopRegulators,c("TF","TG","interaction")]
+        
+        edges_to_keep<-rbind(edges_to_keep,data.frame(TF=as.character(edges$TF),TG=as.character(edges$TG),interaction=as.character(edges$interaction)))
+      }
+      
+    }else{
+      if (is.null(gene_ranks)){
+        stop("Need to supply gene_ranks.")
+      }else{
+        stop("invalid weight_column")
+      }
+    }
+    
+    ktgraph[[epoch]]<-edges_to_keep
+    
+  }
+  
+  # ---------- aggregate edges, and compute node coordinates if fixed_layout==TRUE -------------
+  
+  # using igraph
+  # aggregate epoch networks
+  agg<-dplyr::bind_rows(ktgraph)[,c("TF","TG","interaction")]
+  agg<-agg[!duplicated(agg),]
+  agg_net<-graph_from_data_frame(agg,directed=FALSE)
+  agg_net<-delete_vertices(agg_net,v=V(agg_net)$name[is.na(V(agg_net)$name)])
+
+  if (fixed_layout){ 
+    # assign layout ala fruchterman-reingold
+    layout<-layout_with_fr(agg_net)
+    rownames(layout)<-V(agg_net)$name
+  }
+  
+  
+  # -------------PLOT each network--------------
+  for (i in 1:length(grn)){
+    epoch<-names(grn)[i]
+    edges_to_keep<-ktgraph[[epoch]]
+    
+    # add in edges from other epoch subnetworks, if they exist in the epoch subnetwork (but didn't get picked as a "top regulator")
+    to_add<-agg[!(paste(agg$TF,agg$TG) %in% paste(edges_to_keep$TF,edges_to_keep$TG)),]
+    to_add<-to_add[(paste(to_add$TF,to_add$TG)) %in% (paste(grn[[epoch]]$TF,grn[[epoch]]$TG)),]
+    edges_to_keep<-rbind(edges_to_keep,to_add)
+
+    # Covert to igraph object
+    if (fixed_layout){
+      # make network
+      net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
+      # add vertices (no edges) that aren't in epoch network
+      addvtcs<-V(agg_net)$name[!(V(agg_net)$name %in% V(net)$name)]
+      net<-add_vertices(net,length(addvtcs),attr=list(name=addvtcs))
+      
+    }else{
+      net<-graph_from_data_frame(edges_to_keep[,c("TF","TG","interaction")],directed=FALSE)
+    }
+    
+    # remove nodes with name NA
+    net<-delete_vertices(net,v=V(net)$name[is.na(V(net)$name)])
+    net<-delete_vertices(net,v=V(net)$name[V(net)$name=="NA"])      # stupid hack
+    
+    # add expression values as node attribute
+    if(show_expression){
+      expression_from<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][1],]
+      expression_to<-mean_expression[mean_expression$epoch==strsplit(epoch,split="..",fixed=TRUE)[[1]][2],]
+      if(strsplit(epoch,split="..",fixed=TRUE)[[1]][1] == strsplit(epoch,split="..",fixed=TRUE)[[1]][2]){
+        # epoch (non-transition) network
+        V(net)$expression<-expression_from$mean_expression[match(V(net)$name,expression_from$gene)]
+      }else{
+        #transition network expression of TF from source epoch, expression of target from target epoch
+        V(net)$expression<-ifelse(V(net)$name %in% edges_to_keep$TF,expression_from$mean_expression[match(V(net)$name,expression_from$gene)],expression_to$mean_expression[match(V(net)$name,expression_to$gene)])
+      }
+    }
+    
+    # convert to ggnetwork object
+    if (fixed_layout){
+      # order layout
+      layout_ordered<-layout[V(net)$name,]
+      tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    }else{
+      layout<-layout_with_fr(net)
+      rownames(layout)<-V(net)$name
+      layout_ordered<-layout[V(net)$name,]
+      tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    }
+    
+    # specify if node is known regulator
+    tfnet$type<-"regulator"
+    tfnet$type[tfnet$name %in% targets]<-"known target"
+    tfnet$type<-factor(tfnet$type,levels=c("regulator","known target"))
+    
+    tfnet<-tfnet[!(is.na(tfnet$name)),]
+    
+    cols<-c("activation"="blue","repression"="red")
+    
+    g[[i]]<-ggplot()+
+      geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,color=interaction),size=0.75,curvature=0.1, alpha=.6)
+
+    if(show_expression){
+      g[[i]]<-g[[i]]+geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type,size=expression,alpha=expression),color="black")
+    }else{
+      # if show_expression is FALSE, the color nodes based on type (regulator or target). Can't move this into scale_color_manual because edges colored?
+      g[[i]]<-g[[i]]+geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend,shape=type),color="darkgray",size=node_size,alpha=.8)+
+                    geom_nodes(data=tfnet[tfnet$type=="regulator",],aes(x=x, y=y, xend=xend, yend=yend,shape=type),color="#8C4985",size=node_size,alpha=.8)
+    }
+
+    g[[i]]<-g[[i]]+scale_color_manual(values=cols)+
+      theme_blank()+
+      ggtitle(names(grn)[i])
+    
+    if(declutter){
+      keep<-union(edges_to_keep$TF,edges_to_keep$TG)
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet[tfnet$name %in% keep,],aes(x=x, y=y, label=name),size=label_size, color="#5A8BAD")
+    }else{
+      g[[i]]<-g[[i]]+geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=label_size, color="#5A8BAD")
+    }
+
+    g[[i]]<-g[[i]]+theme(legend.key.size=unit(legend_size/8,"lines"),legend.key.width=unit(legend_size/8,"lines"),legend.title=element_text(size=legend_size),legend.text=element_text(size=legend_size),plot.title=element_text(size=title_size))
+    
+    common_legend<-get_legend(g[[i]])
+    
+    g[[i]]<-g[[i]]+theme(legend.position="none")
+    
+  }
+  
+  # ------- Facet Plots --------
+  g[sapply(g,is.null)]<-NULL
+  
+  g$legend<-common_legend
+  do.call(grid.arrange,g)
+  
+}
+
+
+
+
+
 
 #helpful piece of code to extract a legend
 #https://github.com/hadley/ggplot2/wiki/Share-a-legend-between-two-ggplot2-graphs
