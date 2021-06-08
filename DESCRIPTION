@@ -1,9 +1,24 @@
-Package: warpnet
-Title: What the Package Does (one line, title case)
+Package: epoch
+Title: Dynamic GRN reconstruction from single cell RNA-Seq data
 Version: 0.0.0.9000
-Authors@R: person("First", "Last", email = "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-Depends: R (>= 3.5.0)
-License: What license is it under?
+Authors@R: c(person("Patrick", "Cahan", email = "patrick.cahan@gmail.com", role = c("aut", "cre")), person("Emily", "Su", email="esu3@jhmi.edu", role=c("aut")))
+Description: Computationally reconstruct dynamic gene regulatory networks from single cell RNA-Seq data. Further integrate major signaling pathways with reconstructed GRNs and analyze network topologies.
+Depends: R (>= 3.5.0), reshape2, ggplot2, igraph, loomR, gam, minet, pheatmap, RColorBrewer, GENIE3, DescTools, ggnetwork, gridExtra, pheatmap, viridis, viridisLite
+License: MIT
 Encoding: UTF-8
 LazyData: true
+Imports:
+	reshape2,
+	ggplot2,
+	igraph,
+	loomR,
+	gam,
+	minet,
+	pheatmap,
+	RColorBrewer,
+	GENIE3,
+	DescTools,
+	ggnetwork,
+	gridExtra,
+	pheatmap	
+RoxygenNote: 7.1.1

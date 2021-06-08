@@ -66,6 +66,7 @@ findDynGenes<-function(expDat,
 #'
 #' @param expDat unsmoothed expression matrix
 #' @param tfs vector of transcription factor names
+#' @param dgenes dynamic genes, found using findDynGenes
 #' @param method either 'pearson' or 'MI' to be used in CLR
 #' @param zThresh zscore threshold default 2
 #'
@@ -76,8 +77,15 @@ findDynGenes<-function(expDat,
 reconstructGRN <- function(
   expDat,
   tfs,
+  dgenes=NULL,
   method='pearson',
   zThresh=2){
+
+  if(!is.null(dgenes)){
+    expDat<-expDat[dgenes,]
+  }else{
+    print("Using all genes. For a proper Epoch run, provide dgenes.")
+  }
 
   if (method=='MI'){
     ttDat = t(expDat)
@@ -112,6 +120,7 @@ reconstructGRN <- function(
 #'
 #' @param expDat unsmoothed expression matrix
 #' @param tfs vector of transcription factor names
+#' @param dgenes dynamic genes, found using findDynGenes
 #' @param weightThresh threshold to consider call positive default 0
 #'
 #' @return data frame of TF TG zscore corr
@@ -121,9 +130,16 @@ reconstructGRN <- function(
 reconstructGRN_GENIE3 <- function(
   expDat,
   tfs,
+  dgenes=NULL,
   weightThresh=0){
 
   require(GENIE3)
+
+  if(!is.null(dgenes)){
+    expDat<-expDat[dgenes,]
+  }else{
+    print("Using all genes. For a proper Epoch run, provide dgenes.")
+  }
 
   tfs<-intersect(tfs,rownames(expDat))
 

@@ -1,6 +1,14 @@
 # =================== Functions to analyze networks =====================
 
 # =================== Functions to select effector targets =====================
+#' Function to load in tsv files from Chip-Atlas
+#'
+#' @param path the path to the tsv files containing binding data per effector
+#'
+#' @return list of data frames
+#' 
+#' @export
+#'
 load_SP_effectors<-function(path){
 
   cwd = getwd()
@@ -24,6 +32,18 @@ load_SP_effectors<-function(path){
 # score_targets adds a column "mean_score" which is just copied from chip-atlas computed average column
 # 				adds a column returning the maximum score for a target across samples
 #				adds a column returning the percent frequency of a hit amongst samples based on >threshold
+
+#' Function to score targets of effectors
+#'
+#' Adds columns for mean binding score, maximum binding score, and percent frequency target is a hit based on threshold
+#'
+#' @param aList list of dataframes containing binding data for each effector
+#' @param threshold binding score threshold to compute hit frequency
+#'
+#' @return updated list of dataframes
+#' 
+#' @export
+#'
 score_targets<-function(aList,threshold=50){
 	# remove STRING score
 	aList<-lapply(aList,function(x){x$STRING<-NULL;x})
@@ -53,6 +73,21 @@ score_targets<-function(aList,threshold=50){
 # by_rank if TRUE will return top n_targets targets; if FALSE will use thresholds
 # column column name used in either ranking or thresholding the targets
 # n_targets the number of targets to return for each effector if by_rank=TRUE
+
+#' Finds binding targets given list of dataframes containing binding info for effectors
+#'
+#' 
+#'
+#' @param aList the result of running score_targets
+#' @param column column name used in either ranking or thresholding the possible targets
+#' @param by_rank if TRUE will return top n_targets; if FALSE will use thresholds
+#' @param n_targets the number of targets to return for each effector if by_rank=TRUE
+#' @param threshold threshold to use if by_rank=FALSE
+#'
+#' @return list of binding targets for list of effectors
+#' 
+#' @export
+#'
 find_targets<-function(aList,column="max_score",by_rank=FALSE,n_targets=2000,threshold=NULL){
 
 	# note: binding scores are -log10(q-value/FDR) from MACS2
@@ -78,6 +113,18 @@ find_targets<-function(aList,column="max_score",by_rank=FALSE,n_targets=2000,thr
 
 
 # Function to look at average module (group of genes) expression
+
+#' Computes mean expression of groups of genes 
+#'
+#' 
+#'
+#' @param expX genes-by-cells expression matrix
+#' @param module_list list containing grouped genes, each element is a module of genes
+#'
+#' @return module expression
+#' 
+#' @export
+#'
 mean_module_expression<-function(expX,module_list){
     res<-data.frame(matrix(ncol=ncol(expX),nrow=length(module_list)))
     colnames(res)<-colnames(expX)
@@ -94,7 +141,17 @@ mean_module_expression<-function(expX,module_list){
     res
 }
 
-
+#' Computes mean expression of groups of genes in a dynamic network
+#'
+#' 
+#'
+#' @param expX genes-by-cells expression matrix
+#' @param community_list list of dataframes with community assginemnts. Each dataframe is the result of running subnets.
+#'
+#' @return subnetwork expression
+#' 
+#' @export
+#'
 mean_subnetwork_expression<-function(expX,community_list){
     # get list of subnetwork names
     subnets<-c()
@@ -123,7 +180,19 @@ mean_subnetwork_expression<-function(expX,community_list){
     res
 }
 
-
+#' Function to assign nodes to communities via Louvain clustering
+#'
+#' 
+#'
+#' @param df dataframe containing a static network
+#' @param tfs TFs
+#' @param weight_column column in df containing edgeweights to use
+#' @param tfonly if TRUE will limit network to TFs only
+#'
+#' @return dataframe containing community assignments for each gene
+#' 
+#' @export
+#'
 subnets<-function(df,tfs,weight_column,tfonly=TRUE){
     if (tfonly){
         df<-df[df$TG %in% tfs,]
@@ -227,6 +296,21 @@ rough_hierarchy<-function(modnet){
 # from a TF
 # to a TG
 # weight_column column name in grnDF with edge weights
+
+#' Function to return shortest path from 1 TF to 1 TG in a static network
+#'
+#' 
+#'
+#' @param grnDF a static network dataframe
+#' @param from the starting TF
+#' @param to the end TF
+#' @param weight_column column name in grnDF with edge weights that will be converted to distances
+#' @param compare_to_average if TRUE will compute normalized against average path length
+#'
+#' @return shortest path, distance, normalized distance, and action
+#' 
+#' @export
+#'
 static_shortest_path<-function(grnDF,from,to,weight_column="weighted_score",compare_to_average=FALSE){
     require(igraph)
     # compute relative edge lengths
@@ -268,6 +352,21 @@ static_shortest_path<-function(grnDF,from,to,weight_column="weighted_score",comp
 # Dynamic version of ^^
 # there is probably a better way of doing this that takes in to account the dynamic aspect of the network
 # for now, this function will merge networks and run shortest path on merged network..
+
+#' Function to return shortest path from 1 TF to 1 TG in a dynamic network
+#'
+#' 
+#'
+#' @param grnDF a dyanmic network
+#' @param from the starting TF
+#' @param to the end TF
+#' @param weight_column column name in grnDF with edge weights that will be converted to distances
+#' @param compare_to_average if TRUE will compute normalized against average path length
+#'
+#' @return shortest path, distance, normalized distance, and action
+#' 
+#' @export
+#'
 dynamic_shortest_path<-function(grn,from,to,weight_column="weighted_score",compare_to_average=FALSE){
 
     # merge
@@ -284,6 +383,20 @@ dynamic_shortest_path<-function(grn,from,to,weight_column="weighted_score",compa
 # grn dynamic network (list)
 # from a vector of TFs
 # to a vector of targets
+
+#' Function to return shortest path from multiple TFs to multiple targets in a dynamic network
+#'
+#' 
+#'
+#' @param grnDF a dyanmic network
+#' @param from the starting TFs
+#' @param to the end TFs
+#' @param weight_column column name in grnDF with edge weights that will be converted to distances
+#'
+#' @return dataframe with shortest path, distance, normalized distance, and action
+#' 
+#' @export
+#'
 dynamic_shortest_path_multiple<-function(grn,from,to,weight_column="weighted_score"){
 
 	res<-data.frame(from=character(),to=character(),path=character(),distance=numeric(),action=numeric())
@@ -314,6 +427,18 @@ dynamic_shortest_path_multiple<-function(grn,from,to,weight_column="weighted_sco
 # (i.e. a check on the existing odd/even number of repressive edges)
 # spDF result of running dynamic_shortest_path_multiple
 # expMat 
+
+#' Adds an extra column to the result of dynamic_shortest_path_multiple that predicts overall action based on correlation between "from" and "to"
+#'
+#' 
+#'
+#' @param spDF the result of running dynamic_shortest_path_multiple
+#' @param expMat corresponding genes-by-cells expression matrix
+#'
+#' @return shortest paths dataframe with added action_by_corr column
+#' 
+#' @export
+#'
 cor_and_add_action<-function(spDF,expMat){
 	genes<-union(spDF$from,spDF$to)
 	expMat<-expMat[genes,]
@@ -382,6 +507,26 @@ dynamic_reachability<-function(grn,from,max_dist="less_than_mean",weight_column=
 # =================== Useful plotting functions =====================
 # function to plot heatmap with pre-split expX
 # expList list of expression matrices
+
+#' Useful plotting function to plot heatmap of module expression across time with pre-split expX
+#'
+#'
+#'
+#' @param expList list of expression matrices
+#' @param sampTab sample table
+#' @param pseudotime_column column in sample table containing pseudotime annotation
+#' @param toScale whether or not to scale expression
+#' @param limits limits on expression
+#' @param smooth whether or not to smooth expression across pseudotime for cleaner plotting
+#' @param order_by name in expList that is used to order rows in the heatmap
+#' @param thresh_on threshold expression is considered on, used in ordering the rows
+#' @param fontSize heatmap font size
+#' @param anno_colors annotation colors
+#'
+#' @return pheatmap
+#' 
+#' @export
+#'
 heatmap_by_treatment_group<-function(expList,sampTab,pseudotime_column="pseudotime",toScale=T,limits=c(0,5),smooth=TRUE,order_by="WAG",thresh_on=0.02,fontSize=8,anno_colors=NULL){
     if (class(expList)!="list"){
         expList<-list(A=expList)
@@ -444,7 +589,23 @@ heatmap_by_treatment_group<-function(expList,sampTab,pseudotime_column="pseudoti
 
 }
 
-
+#' Useful plotting function to plot heatmap with pre-split expX
+#'
+#'
+#'
+#' @param expList list of expression matrices
+#' @param sampTab sample table
+#' @param pseudotime_column column in sample table containing pseudotime annotation
+#' @param toScale whether or not to scale expression
+#' @param limits limits on expression
+#' @param smooth whether or not to smooth expression across pseudotime for cleaner plotting
+#' @param fontSize heatmap font size
+#' @param anno_colors annotation colors
+#'
+#' @return pheatmap
+#' 
+#' @export
+#'
 plot_heatmap_by_treatment<-function(expList,sampTab,pseudotime_column="latent_time",toScale=T,limits=c(0,5),smooth=TRUE,anno_colors=NULL,fontSize=8){
     if (class(expList)!="list"){
         expList<-list(A=expList)
@@ -537,9 +698,18 @@ plot_reachability_community_coverage<-function(reachableList,communities){
 
 
 
-
-
-
+#' Function that orders genes based on peak expression
+#'
+#'
+#' @param exp expression matrix
+#' @param sampTab sample table
+#' @param pseudotime_column column in sample table containing pseudotime annotation
+#' @param smooth whether or not to smooth expression across pseudotime 
+#'
+#' @return pheatmap
+#' 
+#' @export
+#'
 order_genes<-function(exp,sampTab,pseudotime_column,smooth=TRUE){
 	st<-sampTab[colnames(exp),]
     st<-st[order(st[,pseudotime_column],decreasing=FALSE),]

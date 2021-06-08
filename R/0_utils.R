@@ -1,5 +1,21 @@
 # some custom functions that aren't in any other packages
 
+#' loads an R object when you don't know the name
+#'
+#' loads an R object when you don't know the name
+#' @param fname file
+#'
+#' @return variable
+#'
+#' @export
+utils_loadObject<-function
+(fname
+ ### file name
+){
+  x<-load(fname);
+  get(x);
+}
+
 
 #' Loads .obs and .var data from loom file
 #'

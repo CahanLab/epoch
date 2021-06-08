@@ -68,7 +68,16 @@ sample_and_epoch_reconstruct<-function(expX,
 }
 
 # =================== Differential Network Functions =====================
-# grnDFs list of grnDF
+#' Function to compute edge differences between networks
+#'
+#' @param grnDFs list of static grnDFs
+#' @param tfs TFs
+#' @param weight_column column name in grnDFs containing edge weight
+#'
+#' @return dataframe of edges with difference scores between the GRNs
+#' 
+#' @export
+#'
 edge_uniqueness<-function(grnDFs,tfs,weight_column){
     
     # all genes
@@ -104,6 +113,11 @@ edge_uniqueness<-function(grnDFs,tfs,weight_column){
 
 }
 
+#' Function to compute edge differences
+#'
+#' @param grnMats list of adjacency matrices
+#'
+#' @return dataframe of edges with difference scores between the GRNs
 edge_rank<-function(grnMats){
     full_df<-as.data.frame(as.table(as.matrix(grnMats[[1]])))
     full_df<-full_df[,1:2]
@@ -131,8 +145,45 @@ edge_rank<-function(grnMats){
 
 # edgeDF is the result of running 'edge_uniqueness' followed by split into dynamic network
 # type DE_on vs DE_off network == "on" or "off"
+
+#' Compute a dynamic difference network
+#'
+#' 
+#'
+#' @param edgeDF the result of running edge_uniqueness
+#' @param epochs list of epoch gene assignments
+#' @param condition condition of interest, should be one of the treatment (aka network name) or column names in edgeDF
+#' @param type "on" or "off" specifies either finding edges that are active in the condition network but off others or inactive in condition network but active in others 
+#' @param diff_thresh edge difference threshold to determine if edge is uniquely on or off
+#' @param condition_thresh edge weight theshold in condition network to keep or filter out in difference network 
+#'
+#' @return list of dataframes representing the dynamic difference network
+#' 
+#' @export
+#'
 dynamic_difference_network<-function(edgeDF, epochs, condition, type, diff_thresh=3, condition_thresh=6){
-    epochs$mean_expression<-NULL
+    
+    edgeDF<-edgeDF[edgeDF$diff!=0,]
+
+    # sort edges by epoch (limit to dynamic, union of all networks)
+    epochs<-lapply(epochs,function(x){x$mean_expression<-NULL;x})
+
+    temp <- vector(mode = "list", length = length(names(epochs[[1]])))
+    names(temp)<-names(epochs[[1]])
+
+    for (e in names(epochs)){
+    	temp<-Map(c,temp,epochs[[e]])
+    }
+
+    epochs<-sapply(temp,unique)
+
+    dynamic_edges<-list()
+	for (epoch in names(epochs)){
+    	dynamic_edges[[epoch]]<-edgeDF[edgeDF$TF %in% epochs[[epoch]],]
+	}
+
+	edgeDF<-dynamic_edges
+
 
     conditions<-names(edgeDF[[1]])[!(names(edgeDF[[1]]) %in% c("TG","TF","min","max","diff"))]
     if (!(condition %in% conditions)){
@@ -153,6 +204,20 @@ dynamic_difference_network<-function(edgeDF, epochs, condition, type, diff_thres
     diffnet
 }
 
+
+#' Perform community detection on a dynamic network
+#'
+#' 
+#'
+#' @param diffnet
+#' @param method community detection method, currently only "louvain"
+#' @param use_weights whether or not to use edge weights (for weighted graphs)
+#' @param weight_column if using weights, name of the column containing edge weights
+#'
+#' @return community assignments of nodes in the dynamic network
+#' 
+#' @export
+#'
 diffnet_community_detection<-function(diffnet,method="louvain",use_weights=FALSE,weight_column=NULL){
     # if directed=TRUE, remember to flip TG and TF in diffnet dfs
     graphs<-lapply(diffnet,function(x) {g<-igraph::graph_from_data_frame(x,directed=FALSE);g})
@@ -173,6 +238,19 @@ diffnet_community_detection<-function(diffnet,method="louvain",use_weights=FALSE
 
 
 # useful function to add correlation-based interaction type to diffnet after using dynamic_difference_network
+#' Adds interaction type to dynamic differential network
+#'
+#' 
+#'
+#' @param diffnet
+#' @param type "on" or "off" depending on the type of differential network. If "on" will assign type based on grnDF_on. Otherwise interaction assigned from grnDF_offlist.
+#' @param grnDF_on the static network in which diffnet edges are active
+#' @param grnDF_offlist list of static networks in which diffnet edges are inactive
+#'
+#' @return community assignments of nodes in the dynamic network
+#' 
+#' @export
+#'
 add_type<-function(diffnet,type,grnDF_on,grnDF_offlist){
     diffnet<-diffnet[sapply(diffnet,function(x) dim(x)[1])>0]
     fun<-function(x,y){merge(x,y,by=c("TG","TF"),all.x=TRUE)}
@@ -202,7 +280,20 @@ add_type<-function(diffnet,type,grnDF_on,grnDF_offlist){
 
 # =================== General, Broad comparison functions=====================
 
-
+#' Computes frobenius distance in a pairwise manner between two sets of networks
+#'
+#' 
+#'
+#' @param netlist1 list of grnDFs
+#' @param netlist2 list of grnDFs
+#' @param weight_column	column name containing edge weights
+#' @param compare_within_netlist1 whether or not to do pairwise comparisons between networks in netlist1
+#' @param compare_within_netlist2 whether or not to do pairwise comparisons between networks in netlist2
+#'
+#' @return dataframe of frobenius distances
+#' 
+#' @export
+#'
 compute_frobenius_distance<-function(netlist1,netlist2,weight_column="zscore",compare_within_netlist1=TRUE,compare_within_netlist2=TRUE){
 
 	# between networks in netlist1
@@ -397,6 +488,23 @@ compute_frobenius_distance<-function(netlist1,netlist2,weight_column="zscore",co
 
 # compute Jaccard index of top regulators
 # right now only PageRank supported
+
+#' Computes Jaccard similarity between top regulators in two sets of networks
+#'
+#' 
+#'
+#' @param netlist1 list of grnDFs
+#' @param netlist2 list of grnDFs
+#' @param n_regs the number of top regulators to compare from each network
+#' @param method method to find top regulators. Currently only supports "pagerank"
+#' @param weight_column column name in grnDFs containing edge weights
+#' @param compare_within_netlist1 whether or not to do pairwise comparisons between networks in netlist1
+#' @param compare_within_netlist2 whether or not to do pairwise comparisons between networks in netlist2
+#'
+#' @return dataframe of Jaccard similarities of top regulators
+#' 
+#' @export
+#'
 compute_JI_topregs<-function(netlist1,netlist2,n_regs=15,method="pagerank",weight_column="zscore",compare_within_netlist1=TRUE,compare_within_netlist2=TRUE){
 	# between networks in netlist1
 	if (compare_within_netlist1){
@@ -490,6 +598,23 @@ compute_JI_topregs<-function(netlist1,netlist2,n_regs=15,method="pagerank",weigh
 
 }
 
+
+#' Computes Jaccard similarity between top regulators in two sets of networks across a range of top X regulators
+#'
+#' 
+#'
+#' @param netlist1 list of grnDFs
+#' @param netlist2 list of grnDFs
+#' @param n_regs a vector indicating which values of top regulators to scan across
+#' @param method method to find top regulators. Currently only supports "pagerank"
+#' @param weight_column column name in grnDFs containing edge weights
+#' @param compare_within_netlist1 whether or not to do pairwise comparisons between networks in netlist1
+#' @param compare_within_netlist2 whether or not to do pairwise comparisons between networks in netlist2
+#'
+#' @return dataframe of Jaccard similarities of top regulators
+#' 
+#' @export
+#'
 JI_across_topregs<-function(netlist1,netlist2,n_regs=3:15,func="mean",method="pagerank",weight_column="zscore",compare_within_netlist1=TRUE,compare_within_netlist2=TRUE){
   if (func=="mean"){
     res<-data.frame(group=character(),jaccard=numeric(),n_regs=numeric())
@@ -597,6 +722,20 @@ compute_betweenness<-function(grnDF,tfs=NULL,weight_column="zscore",normalized=T
 
 # function that takes a list of network dataframes
 # returns long dataframe listing network, betweenness of each TF, degree of each TF
+
+
+#' Computes betweenness and degree of each TF for each network in a list of networks
+#'
+#' 
+#'
+#' @param netlist
+#' @param weight_column column name in grnDFs containing edge weights
+#' @param normalized whether or not to normalize degree and betweenness
+#'
+#' @return dataframe listing network, betweenness of each TF, degree of each TF
+#' 
+#' @export 
+#'
 biglist_compute_betweenness_degree<-function(netlist,weight_column="zscore",normalized=TRUE){
 
 	res<-data.frame(betweenness=numeric(),degree=numeric(),network=character(),TF=character())
@@ -627,6 +766,21 @@ biglist_compute_betweenness_degree<-function(netlist,weight_column="zscore",norm
 
 # =================== Useful Plotting Functions =====================
 # plotting the diffnet
+
+
+#' Plot the dynamic differential network 
+#'
+#' 
+#'
+#' @param grn the dynamic network
+#' @param tfs TFs
+#' @param only_TFs whether or not to only plot TFs and exclude non-regulators
+#' @param order the order in which to plot epochs, or which epochs to plot
+#'
+#' @return
+#' 
+#' @export
+#'
 plot_dyn_diffnet<-function(grn,tfs,only_TFs=TRUE,order=NULL){
   g<-list()
 
@@ -669,6 +823,22 @@ plot_dyn_diffnet<-function(grn,tfs,only_TFs=TRUE,order=NULL){
 
 
 # same as above, but will also do community detection and betweenness computation, and color/fade accordingly
+
+#' Plot the dynamic differential network but colored by communities and optionally faded by betweenness
+#'
+#' 
+#'
+#' @param grn the dynamic network
+#' @param tfs TFs
+#' @param only_TFs whether or not to only plot TFs and exclude non-regulators
+#' @param order the order in which to plot epochs, or which epochs to plot
+#' @param weight_column column name with edge weights
+#' @param compute_betweenness whether or not to fade nodes by betweenness
+#'
+#' @return
+#' 
+#' @export
+#'
 plot_diffnet_detail<-function(grn,tfs,only_TFs=TRUE,order=NULL,weight_column="zscore",compute_betweenness=TRUE){
   g<-list()
 
