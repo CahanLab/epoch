@@ -7,6 +7,7 @@ Depends: R (>= 3.5.0), reshape2, ggplot2, igraph, loomR, gam, minet, pheatmap, R
 License: MIT
 Encoding: UTF-8
 LazyData: true
+biocViews:
 Imports:
 	reshape2,
 	ggplot2,
