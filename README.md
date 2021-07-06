@@ -5,6 +5,9 @@ Dynamic gene regulatory network reconstruction from scRNA-seq data.
 ## Introduction
 Epoch leverages single-cell transcriptomic data, single-cell analysis methods, and graph theoretic approaches to reconstruct dynamic GRNs. Additionally, Epoch contains functionality for top regulator prediction, network comparision, signaling pathway integration, amongst others. Here we show some examples of Epoch in action.
 
+For a more in depth look at Epoch, and to see how we applied it to elucidate signaling-induced GRN topology changes in early mouse embryonic stem cell (ESC) directed differentiation, check out our [preprint here](https://www.biorxiv.org/content/10.1101/2021.05.06.443021v2).
+
+
 1. [Setup](#setup)
 2. [Example 1: Reconstruction](#example1)
 3. [Example 2: Network Comparison](#example2)
@@ -15,7 +18,7 @@ Epoch leverages single-cell transcriptomic data, single-cell analysis methods, a
 ## Setup <a name="setup"></a>
 ```R
 
-install_github("pcahan1/epoch")
+devtools::install_github("pcahan1/epoch")
 library(epoch)
 
 ```
@@ -23,6 +26,8 @@ library(epoch)
 ## Example 1: Reconstruction <a name="example1"></a>
 
 ### Data
+
+Epoch reconstructs networks from single-cell RNA-sequencing data. 
 
 This data is unpublished data from our lab. It is sampled from day 0 through day 4 mESC directed differentiation toward mesodermal fate guided by Wnt3a, Activin A, and GSKi. It has already been normalized, and the varying genes have been identified. It has also been clustered, and analyzed with RNA Velocity.
 
@@ -249,6 +254,8 @@ Starting with the network we reconstructed in Example 1, we can compare it to a 
 
 ### Data
 
+In this section, Epoch requires at least two reconstructed networks (in order to carry out the comparison) and the epoch assignments for these networks. These inputs are derived from the reconstruction in the previous section.
+
 First, load in the data. The reconstructed network and epoch assignments from the previous section are provided here as 'net1' and epochs1': 
 
 ```R
@@ -338,6 +345,10 @@ plot_diffnet_detail(network1_on,tfs=mmTFs,order=c("epoch3"),weight_column="netwo
 We can use Epoch to integrate signaling activity and trace paths through the network. Starting with the dynamic network we constructed in Example 1. 
 
 ### Data
+
+In this section, Epoch requires a reconstructed network (which can be derived from [Example 1: Reconstruction](#example1). As described below, Epoch will also require pre-computed effector targets. 
+
+
 ```R
 list12<-loadDataFromLoom("data/sampled_mesoderm_WAG.loom")
 expDat<-list12[['expDat']]
@@ -350,7 +361,7 @@ xdyn <- findDynGenes(expDat, sampTab, group_column="cluster", pseudotime_column=
 ```
 
 ### Get effector targets
-Effector targets of major signaling pathways are pre-computed and available within Epoch (mouse).
+Effector targets of major signaling pathways are pre-computed and available within Epoch (mouse: see 'data/effectortargets_mouse.rda').
 These lists were computed by: (1) aquiring binding score (MACS2) data for 18 signaling effector TFs from the ChIP-Atlas (Oki et al., 2018), (2) target genes were ranked by maximum binding score, (3) the top 2000 targets were retained (or all retained, if less than 2000 targets).
 
   Alternatively, here's how we can derive new effector target lists:
@@ -451,7 +462,7 @@ tcf7l2_to_meso[tcf7l2_to_meso$to=="Sox17",]
 
 By applying this method to dynamic networks reconstructed from different datasets, it's possible to elucidate topologies unsuitable or restrictive to specific cell fates. By apply this method more broadly via exhaustive search of paths from all major signaling effectors to specific sets of targets, it's possible to predict the necessary signaling activity required for directing specific cell fates. 
 
-(For more info on how we used this method to elucidate network topologies favoring mesodermal fate, to compare how activation and suppression of different signaling pathways impacts network topology, and a more in depth analysis on tracing paths from signaling effectors to target genes, see our manuscript).
+(For more info on how we used this method to elucidate network topologies favoring mesodermal fate, to compare how activation and suppression of different signaling pathways impacts network topology, and a more in depth analysis on tracing paths from signaling effectors to target genes, see our [manuscript](https://www.biorxiv.org/content/10.1101/2021.05.06.443021v2)).
 
 
 
