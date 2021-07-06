@@ -173,11 +173,11 @@ find_cuts_by_similarity<-function(
 	dynRes,
 	winSize=5,
 	pThresh_dyn=0.05){
-​
-	# limit exp to dynamically expressed genes
+	
+  # limit exp to dynamically expressed genes
 	expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
 	cat(nrow(expDat),"\n")
-​
+	
 	# compute PCC between all cells -- just easier this way
 	xcorr = cor(expDat[,rownames(dynRes$cells)])
 	xdist = 1 - xcorr
@@ -195,7 +195,7 @@ find_cuts_by_similarity<-function(
 	cuts_index = which(pShift==1)
 	cuts_index = cuts_index[2:length(cuts_index)]
 	cat("Cut points: ",dynRes$cells[cuts_index,]$pseudotime, "\n")
-​
+
 	# It is kinda confusing, but we want the pt of the cell just prior to the determined cutpoint
 	# But, because of the way that this is indexed, we don't need to adjust anything
 	dynRes$cells[cuts_index,]$pseudotime
