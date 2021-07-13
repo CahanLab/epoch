@@ -846,6 +846,10 @@ plot_diffnet_detail<-function(grn,tfs,only_TFs=TRUE,order=NULL,weight_column="zs
     grn<-grn[order]
   } 
 
+  if (any(sapply(grn,function(x){("interaction" %in% names(x))})==FALSE)){
+  	grn<-add_interaction_type(grn)
+  }
+
   for (i in 1:length(grn)){
     df<-grn[[i]]
     

@@ -167,6 +167,41 @@ head(another_gene_rank$epoch1..epoch1)
 
 ```
 
+### Some Useful functions for networks
+Here are some useful functions for understanding details of reconstructed networks.
+
+First, we can add in the interaction type (also automatically added in plotting functions). This works on both static and dynamic GRNs.
+```R
+dynamic_grn<-add_interaction_type(dynamic_grn)
+#grnDF<-add_interaction_type(grnDF)
+
+head(dynamic_grn$epoch2..epoch2)
+#        TG    TF   zscore       corr    offset weighted_score interaction
+# 4  Prdm14 Basp1 3.096282 -0.2482408  5.164179       3.096282  repression
+# 7  Prdm14  Rest 3.102711  0.2485766  1.776119       3.102711  activation
+# 9  Prdm14 Tead2 3.114365 -0.2491080  7.149254       3.114365  repression
+# 18 Ptp4a1  Lhx1 3.288639  0.1531601 -6.074627       3.288639  activation
+# 19 Ptp4a1 Gata4 3.975216  0.1649048 13.432836       2.252686  activation
+# 23 Sema4c  Sox4 3.009982  0.2526573  7.701493       3.009982  activation
+
+```
+
+We can apply community detection to these networks. This is particularly useful when examining mean module expression (see below). This works on both static and dynamic GRNs.
+```R
+community_assignments<-find_communities(dynamic_grn)
+#community_assignments<-find_communities(grnDF)
+
+head(community_assignments$epoch3..epoch3)
+#            gene communities
+# 1        Prdm14           2
+# 2          Eya1           3
+# 3        Ptp4a1           3
+# 4        Sema4c           2
+# 5 1700019D03Rik           5
+# 6          Fzd5           1
+
+```
+
 
 ### Plotting
 Epoch contains various plotting tools to visualize dynamic activity of genes and networks.
@@ -212,6 +247,13 @@ plot_dynamic_network(list(mesoderm_network=grnDF),mmTFs,only_TFs=TRUE)
 
   These may be cumbersome, so instead it may be useful to limit which interactions to plot. For example, we can limit the plot to edges with weight above a certain threshold, using the "thresh" parameter. Alternatively, it may be more informative to look at top regulators and their top targets:
 
+
+#### We can plot the dynamic network with some more detail
+This function will color the nodes by community and optionally fade by betweenness. If the 'communities' parameter is not specified, 'find_communities' will be run to detect community structure.
+```R
+plot_dynnet_detail(dynamic_grn,tfs=mmTFs,only_TFs=TRUE,order=c("epoch1..epoch1","epoch2..epoch2","epoch3..epoch3"),communities=NULL,compute_betweenness=TRUE)
+
+```  
 
 
 #### We can plot top regulators and their top targets
@@ -318,15 +360,15 @@ head(network1_on$epoch3)
 
   
 ### Find communities
-We can find community structure within the differential network (or other dynamic network).
+We can find community structure within the differential network (or other dynamic network). (Also mentioned above)
 ```R
-communities<-diffnet_community_detection(network1_on)
+communities<-find_communities(network1_on)
 
 ```
   
   
 ### Plot the differential network
-We can plot the differential network, with or without some details (e.g. colored by cluster, faded by betweenness). Tune threshold parameters when calling dynamic_difference_network to change strictness of including or not including an edge. Here's what the third epoch looks like (with relatively strict thresholds for readability):
+We can plot the differential network, with or without some details (e.g. colored by cluster, faded by betweenness). Tune threshold parameters when calling dynamic_difference_network to change strictness of including or not including an edge. Here's what the third epoch looks like (with relatively strict thresholds for readability), using two separate methods:
 
 ```R
 # plot_dyn_diffnet(network1_on,mmTFs,only_TFs=TRUE)
@@ -337,7 +379,12 @@ plot_diffnet_detail(network1_on,tfs=mmTFs,order=c("epoch3"),weight_column="netwo
 
 <img src="img/example2_network1_on.png">
 
+The above plotting will re-find clusters via Louvain clustering. Alternatively, we can use the earlier plotting function 'plot_dynnet_detail'. This function is more general, and allows us to specify a community assignment to use. For example:
+```R
 
+plot_dynnet_detail(network1_on,tfs=mmTFs,order=c("epoch3"),weight_column="network1",communities=communities,compute_betweenness=TRUE)
+
+```
 
 
 ## Example 3: Signaling Pathway Integration <a name="example3"></a>

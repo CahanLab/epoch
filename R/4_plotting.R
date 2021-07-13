@@ -62,6 +62,140 @@ plot_dynamic_network<-function(grn,tfs,only_TFs=TRUE,order=NULL,thresh=NULL){
 
 }
 
+
+
+
+# same as above, but will also do community detection and betweenness computation, and color/fade accordingly
+
+#' Plot the dynamic differential network but colored by communities and optionally faded by betweenness
+#'
+#' 
+#'
+#' @param grn the dynamic network
+#' @param tfs TFs
+#' @param only_TFs whether or not to only plot TFs and exclude non-regulators
+#' @param order the order in which to plot epochs, or which epochs to plot
+#' @param weight_column column name with edge weights
+#' @param communities community assignments or the result of running find_commumities.The names in this object should match the names of the epoch networks in grn. If NULL, it will be automatically run.
+#' @param compute_betweenness whether or not to fade nodes by betweenness
+#'
+#' @return
+#' 
+#' @export
+#'
+plot_dynnet_detail<-function(grn,tfs,only_TFs=TRUE,order=NULL,weight_column="zscore",communities=NULL,compute_betweenness=TRUE){
+  g<-list()
+
+  if (!is.null(communities)){
+    if (names(communities)!=names(grn)){
+      names(communities)<-names(grn)
+    }
+  }
+
+  if (!is.null(order)){
+    grn<-grn[order]
+    if (!is.null(communities)){
+      communities<-communities[order]
+    }
+  } 
+
+  if (any(sapply(grn,function(x){("interaction" %in% names(x))})==FALSE)){
+    grn<-add_interaction_type(grn)
+  }
+
+  for (i in 1:length(grn)){
+    df<-grn[[i]]
+    
+    if (only_TFs){
+      df<-df[df$TG %in% tfs,]
+    }
+    if (nrow(df)==0){
+      next
+    }
+
+    df<-df[,c("TF","TG",weight_column,"interaction")]
+    colnames(df)<-c("TF","TG","weight","interaction")
+
+    net<-graph_from_data_frame(df,directed=FALSE)
+
+    if(compute_betweenness){
+      b<-betweenness(net,directed=FALSE,normalized=TRUE)
+      b<-as.data.frame(b)
+      colnames(b)<-"betweenness"
+      b$gene<-rownames(b)
+      b<-b[,c("gene","betweenness")]
+      if (!is.null(communities)){
+        c<-communities
+      }else{
+        c<-as.data.frame(as.table(membership(cluster_louvain(net))))
+      }
+      colnames(c)<-c("gene","communities")
+      vtx_features<-merge(b,c,by="gene",all=TRUE)
+    }else{
+      if (!is.null(communities)){
+        c<-communities
+      }else{
+        c<-as.data.frame(as.table(membership(cluster_louvain(net))))
+      }
+      colnames(c)<-c("gene","communities")
+      vtx_features<-c
+    }
+
+    layout<-layout_with_fr(net)
+    rownames(layout)<-V(net)$name
+    layout_ordered<-layout[V(net)$name,]
+    tfnet<-ggnetwork(net,layout=layout_ordered,cell.jitter=0)
+    tfnet$is_regulator<-as.character(tfnet$name %in% tfs)
+    if(compute_betweenness){
+      tfnet$betweenness<-vtx_features$betweenness[match(tfnet$name,vtx_features$gene)]
+    }
+    tfnet$communities<-as.factor(vtx_features$communities[match(tfnet$name,vtx_features$gene)])
+
+    cols<-c("activation"="blue","repression"="red")
+    num_cols2<-length(unique(tfnet$communities))
+    if (num_cols2<=8){
+      cols2<-brewer.pal(num_cols2,"Set1")
+    }else{
+      cols2<-colorRampPalette(brewer.pal(8,"Set1"))(num_cols2)
+    }
+    names(cols2)<-unique(tfnet$communities)
+    cols<-c(cols,cols2)
+
+    if(compute_betweenness){
+      g[[i]]<-ggplot()+
+        geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend, color=interaction),size=0.75,curvature=0.1, alpha=.6)+
+        scale_color_manual(values=cols)+
+        geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),color="darkgray",size=6,alpha=.5)+
+        geom_nodes(data=tfnet[tfnet$is_regulator=="TRUE",],aes(x=x, y=y, xend=xend, yend=yend,color=communities, alpha=betweenness+.5),size=6)+
+        geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
+        theme_blank()+
+        ggtitle(names(grn)[i])
+    }else{
+      g[[i]]<-ggplot()+
+        geom_edges(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend, color=interaction),size=0.75,curvature=0.1, alpha=.6)+
+        scale_color_manual(values=cols)+
+        geom_nodes(data=tfnet,aes(x=x, y=y, xend=xend, yend=yend),color="darkgray",size=6,alpha=.5)+
+        geom_nodes(data=tfnet[tfnet$is_regulator=="TRUE",],aes(x=x, y=y, xend=xend, yend=yend,color=communities),alpha=.5,size=6)+
+        geom_nodelabel_repel(data=tfnet,aes(x=x, y=y, label=name),size=2.5, color="#5A8BAD")+
+        theme_blank()+
+        ggtitle(names(grn)[i])
+    }
+
+    g[[i]]<-g[[i]]+theme(legend.position="none")
+  }
+  g<-g[!sapply(g,is.null)]
+  do.call(grid.arrange,g)
+}
+
+
+
+
+
+
+
+
+
+
 #' quick plot of top targets of specified regulators
 #'
 #'

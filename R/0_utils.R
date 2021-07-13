@@ -121,6 +121,93 @@ grnKsmooth<-function(
 }
 
 
+#' Add interaction type to static or dynamic GRN
+#'
+#' Add interaction type to static or dymamic GRN
+#'
+#'
+#' @param grn a static or dynamic grn
+#'
+#' @return an updated static or dynamic grn with added interaction type
+#' 
+#' @export
+#'
+add_interaction_type<-function(grn){
+
+  if (class(grn)=='data.frame'){
+    if(!("corr" %in% names(grn))){
+      stop("Missing 'corr' information. Run reconstruction first.")
+    }else{
+      added<-grn
+      added$interaction<-ifelse(added$corr<0,"repression","activation")
+    }
+  }else if(class(grn)=='list'){
+    keep<-sapply(grn,function(x){("corr" %in% names(x))})
+    if(any(keep==FALSE)){
+      stop("At least one epoch network is missing 'corr' information. Run reconstruction first.")
+    }else{
+      added<-lapply(grn,transform,interaction=ifelse(corr<0,"repression","activation"))
+    }
+  }else{
+    stop("Invalid GRN.")
+  }
+
+  added
+
+}
+
+
+#' Find communities in a static or dynamic network
+#'
+#' 
+#'
+#' @param grn
+#' @param use_weights whether or not to use edge weights (for weighted graphs)
+#' @param weight_column if using weights, name of the column containing edge weights
+#'
+#' @return community assignments of nodes in the dynamic network
+#' 
+#' @export
+#'
+find_communities<-function(grn,use_weights=FALSE,weight_column=NULL){
+    
+  # if directed=TRUE, remember to flip TG and TF in diffnet dfs
+
+  if (class(grn)=="data.frame"){
+    graphs<-igraph::graph_from_data_frame(grn,directed=FALSE)
+    
+    if (use_weights){
+        weights<-igraph::edge_attr(graphs,weight_column)
+    }else{
+        weights<-NA
+    }
+
+    communities<-as.data.frame(as.table(membership(igraph::cluster_louvain(graphs,weights=weights))))
+    colnames(communities)<-c("gene","communities")
+
+  }else if(class(grn)=="list"){
+    
+    if (use_weights){
+      graphs<-lapply(grn,function(x) {g<-igraph::graph_from_data_frame(x[,c("TF","TG",weight_column)],directed=FALSE);g})
+      communities<-lapply(graphs,function(x) {weights<-igraph::edge_attr(x,weight_column); c<-as.data.frame(as.table(membership(igraph::cluster_louvain(x,weights=weights))));colnames(c)<-c("gene","communities");c})
+    }else{
+      graphs<-lapply(grn,function(x) {g<-igraph::graph_from_data_frame(x,directed=FALSE);g})
+      communities<-lapply(graphs,function(x) {c<-as.data.frame(as.table(membership(igraph::cluster_louvain(x,weights=NA))));colnames(c)<-c("gene","communities");c})
+    }
+
+  }else{
+    stop("Invalid GRN.")
+  }
+
+  communities
+
+
+  
+}
+
+
+
+
 #' compiles results from findDynGenes run on separate paths
 #'
 #' compiles results from findDynGenes run on separate paths into a single result
