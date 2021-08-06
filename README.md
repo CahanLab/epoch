@@ -109,7 +109,7 @@ dynamic_grn<-epochGRN(grnDF,epoch_assignments)
 
 
 # Example alternative:
-# assignment_list<-assign_epoch_simple(expDat[dgenes,],xdyn)
+# assignment_list<-assign_epochs_simple(expDat[dgenes,],xdyn)
 
 ```
   

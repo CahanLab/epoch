@@ -50,7 +50,7 @@ cross_corr<-function(grn_row,expDat,lag){
 	tg<-grn_row[1]
 	tf<-grn_row[2]
 
-	x<-ccf(expDat[tf,],expDat[tg,],lag,pl=FALSE)
+	x<-ccf(as.numeric(expDat[tf,]),as.numeric(expDat[tg,]),lag,pl=FALSE)
 
 	df<-data.frame(lag=x$lag,cor=abs(x$acf))
     df<-df[order(df$cor,decreasing=TRUE),]
