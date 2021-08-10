@@ -41,6 +41,12 @@ sampTab<-list12[['sampTab']]
 
 mmTFs<-utils_loadObject("data/mmTFs.rda")
 mmTFs<-intersect(rownames(expDat),mmTFs)
+
+# Note: 'loadDataFromLoom' uses loomR, and is sensitive to the version
+# when calling lfile$get.attributes.df(). Versions of loomR that accept 
+# parameters 'attributes' or 'attribute.names' in get.attributes.df()
+# are supported here. Future versions may require some adjustment.
+
 ```
 
 ### Static Network Reconstruction
