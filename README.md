@@ -96,9 +96,22 @@ grnDF[5:15,]
 ### Dynamic Network Extraction
 We can further explore changes in the network across time by defining "epochs" or time periods in our trajectory, assigning genes to these epochs, and extracting a dynamic network across time.  
 
-Defining epochs can be done in a number of ways. Here we show an example with method="pseudotime". This will partition cells based on pseudotime (pseudotime will be divided evenly, unless specified with parameter psuedotime_cuts). Althernatively, we can define epochs by "cell_order", in which cells are partitioned based on raw cell order rather than pseudotime, or "group", in which partitions are pre-defined.  
+Defining epochs can be done in a number of ways. Here we show an example with method="pseudotime". This will partition cells based on pseudotime (pseudotime will be divided evenly, unless specified with parameter psuedotime_cuts). The following sets of parameters are alternative methods of defining epochs:
 
-For a simpler approach, assign_epoch_simple() will define and assign epochs based on maximum mean expression of a gene. This approach assumes genes cannot belong to more than one epoch.
+* __method = "pseudotime", num_epochs = n__ : This will divide pseudotime evenly, and paritition the cells into n epochs.
+* __method = "pseudotime", pseudotime_cuts = c(a,b)__ : This will partition by cells by pseudotime, cutting pseudotime at a and b. The resulting number of epochs is length(pseudotime_cuts)+1.
+* __method = "cell_order", num_epochs = n__ : This will evenly partition cells based on raw cell order.
+* __method = "group", group_assignment = L__ : This will partition cells into pre-defined epochs. L is a list describing the assignment. names(L) correspond to epoch names; elements in L are vectors containing groups in dynRes$cells$group.
+* __method = "con_similarity"__ : This will automatically detect epochs based on consecutive similarity (i.e. measures correlation between groups of cells along a sliding window across pseudotime). This method does not require specifying num_epochs.
+* __method="kmeans", num_epochs = n__ : This will automatically detect epochs based on k-means clustering.
+* __method="hierarchical", num_epochs = n__ : This will automatically detect epochs based on hierarchical clustering.
+  
+
+"con_similarity", "kmeans", and "hierarchical" call functions "find_cuts_by_similarity" and "find_cuts_by_clustering". You can refine the epoch definitions by employing these two functions separately and using the psuedotime cuts they return in the second method described above. 
+
+Additionally, define_epochs takes as input the expression matrix. For smoother epoch definitions, you can optionally pass a smoothed expression matrix instead. Smoothing can be done using the function grnKsmooth. See [plotting dynamically expressed genes](#plotdyngenes) for an example.
+
+For a simpler approach, assign_epoch_simple() will define and assign epochs based on maximum mean expression of a gene. However, unlike the standard approach, this approach assumes genes cannot belong to more than one epoch.
 
 ```R
 xdyn<-define_epochs(xdyn,expDat,method="pseudotime",num_epochs=3)
@@ -116,6 +129,11 @@ dynamic_grn<-epochGRN(grnDF,epoch_assignments)
 
 # Example alternative:
 # assignment_list<-assign_epochs_simple(expDat[dgenes,],xdyn)
+
+# Another example alternative:
+# ccells <- xdyn$cells
+# expSmoothed <- grnKsmooth(expDat, ccells, BW=0.02)
+# xdyn <- define_epochs(xdyn,expSmoothed,method="kmeans",num_epochs=3)
 
 ```
   
@@ -213,7 +231,7 @@ head(community_assignments$epoch3..epoch3)
 Epoch contains various plotting tools to visualize dynamic activity of genes and networks.
 
 
-#### We can visualize dynamically expressed genes across time
+#### We can visualize dynamically expressed genes across time <a name="plotdyngenes"></a>
 This is particularly useful for verifying epoch assignments, and gauging how many epochs should occur in a trajectory. Here we plot the expression of 50 TFs along pseudotime.
 
 ```R

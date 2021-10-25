@@ -12,7 +12,7 @@ define_epochs(
   pseudotime_cuts = NULL,
   group_assignments = NULL,
   pThresh_dyn = 0.05,
-  winSize = 5
+  winSize = 2
 )
 }
 \arguments{
@@ -20,7 +20,7 @@ define_epochs(
 
 \item{expDat}{genes-by-cells expression matrix, or a list of expression matrices per path. If list, names should match names of dynRes.}
 
-\item{method}{method to define epochs. Either "pseudotime", "cell_order", "group", "con_similarity"}
+\item{method}{method to define epochs. Either "pseudotime", "cell_order", "group", "con_similarity", "kmeans", "hierarchical"}
 
 \item{num_epochs}{number of epochs to define. Ignored if epoch_transitions, pseudotime_cuts, or group_assignments are provided.}
 

@@ -8,7 +8,7 @@
 #' 
 #' @param dynRes results of running findDynGenes, or a list of results of running findDynGenes per path. If list, names should match names of expDat.
 #' @param expDat genes-by-cells expression matrix, or a list of expression matrices per path. If list, names should match names of dynRes.
-#' @param method method to define epochs. Either "pseudotime", "cell_order", "group", "con_similarity"
+#' @param method method to define epochs. Either "pseudotime", "cell_order", "group", "con_similarity", "kmeans", "hierarchical"
 #' @param num_epochs number of epochs to define. Ignored if epoch_transitions, pseudotime_cuts, or group_assignments are provided.
 #' @param pseudotime_cuts vector of pseudotime cutoffs. If NULL, cuts are set to max(pseudotime)/num_epochs.
 #' @param group_assignments a list of vectors where names(assignment) are epoch names, and vectors contain groups belonging to corresponding epoch
@@ -23,7 +23,7 @@ define_epochs<-function(dynRes,
 						pseudotime_cuts=NULL,
 						group_assignments=NULL,
 						pThresh_dyn=0.05,
-						winSize=5){
+						winSize=2){
 
 	# put dynRes and expDat into list, if not already
 	# for cleaner code later on... just put everything is in list.
@@ -47,8 +47,12 @@ define_epochs<-function(dynRes,
    			sort(t1, decreasing=FALSE)
    			chunk_size<-floor(length(t1)/num_epochs)
 
-   			for (i in 1:length(num_epochs)){
-   				cells_in_epoch<-names(t1)[(1+((i-1)*chunk_size)):(i*chunk_size)]
+   			for (i in 1:num_epochs){
+   				if (i==num_epochs){
+   					cells_in_epoch<-names(t1)[(1+((i-1)*chunk_size)):length(t1)]
+   				}else{
+   					cells_in_epoch<-names(t1)[(1+((i-1)*chunk_size)):(i*chunk_size)]
+   				}
    				path_dyn$cells$epoch[path_dyn$cells$cell_name %in% cells_in_epoch]<-paste0("epoch",i)
    			}
    			
@@ -78,9 +82,22 @@ define_epochs<-function(dynRes,
 
 		# define by consecutive similarity
 		if (method=="con_similarity"){
-			cuts = find_cuts_by_similarity(expDat[[1]], path_dyn, winSize=winSize, pThresh_dyn=pThresh_dyn)
+			cuts = find_cuts_by_similarity(expDat[[path]], path_dyn, winSize=winSize, pThresh_dyn=pThresh_dyn)
 			path_dyn<-split_epochs_by_pseudotime(path_dyn,cuts)
 		}
+
+		# define by kmeans
+		if (method=="kmeans"){
+			cuts = find_cuts_by_clustering(expDat[[path]], path_dyn, num_epochs=num_epochs, method="kmeans", pThresh_dyn=pThresh_dyn)
+			path_dyn<-split_epochs_by_pseudotime(path_dyn,cuts)
+		}
+
+		# define by hierarchical clustering
+		if (method=="hierarchical"){
+			cuts = find_cuts_by_clustering(expDat[[path]], path_dyn, num_epochs=num_epochs, method="hierarchical", pThresh_dyn=pThresh_dyn)
+			path_dyn<-split_epochs_by_pseudotime(path_dyn,cuts)
+		}
+
 
 		new_dynRes[[path]]<-path_dyn
 
@@ -146,8 +163,8 @@ split_epochs_by_group<-function(dynRes,assignment){
 	sampTab<-dynRes$cells
 	sampTab$epoch<-NA
 
-	for (epoch in names(assignment)){
-		sampTab$epoch[sampTab$group %in% assignment[[epoch]]]<-epoch
+	for (e in names(assignment)){
+		sampTab$epoch[sampTab$group %in% assignment[[e]]]<-e
 	}
 
 	dynRes$cells<-sampTab
@@ -156,49 +173,168 @@ split_epochs_by_group<-function(dynRes,assignment){
 }
 
 
+# #' Returns cuts to define epochs
+# #'
+# #' Returns cuts to define epochs via sliding window comparison
+# #' 
+# #' @param expDat genes-by-cells expression matrix
+# #' @param dynRes result of running findDynGenes or define_epochs
+# #' @param winSize number of cells to each side to compare each cell to
+# #' @param pThresh_dyn pval threshold if gene is dynamically expressed
+# #'
+# #' @return vector of  pseudotimes at which to cut data into epochs
+# #' @export
+# #'
+# find_cuts_by_similarity<-function(
+# 	expDat,
+# 	dynRes,
+# 	winSize=5,
+# 	limit_to=NULL,
+# 	pThresh_dyn=0.05){
+	
+#   # limit exp to dynamically expressed genes
+# 	expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
+# 	#cat(nrow(expDat),"\n")
+	
+# 	if (!is.null(limit_to)){
+#     	limit_to<-intersect(limit_to,rownames(expDat))
+#     	expDat<-expDat[limit_to,]
+#     }
+
+# 	# compute PCC between all cells -- just easier this way
+# 	xcorr = cor(expDat[,rownames(dynRes$cells)])
+# 	xdist = 1 - xcorr
+# 	mydists = rep(1, nrow(xdist)-1)
+# 	pShift = rep(0, nrow(xdist)-1)
+# 	end = nrow(xdist)
+# 	for(i in 2 : end-1){
+#   		xi = seq(i-1 : max(1, i-winSize))
+#   		yi = seq(i+1 : min(end, i+winSize))
+#   		choice = which.max( c(mean(xdist[i,xi]), mean(xdist[i,yi])))
+#   		pShift[i] = c(0,1)[choice]
+#   		mydists[i] = mean(xdist[i,xi]) - mean(xdist[i,yi])
+# 	}
+# 	# the first one is bogus
+# 	cuts_index = which(pShift==1)
+# 	cuts_index = cuts_index[2:length(cuts_index)]
+# 	cat("Cut points: ",dynRes$cells[cuts_index,]$pseudotime, "\n")
+
+# 	# It is kinda confusing, but we want the pt of the cell just prior to the determined cutpoint
+# 	# But, because of the way that this is indexed, we don't need to adjust anything
+# 	dynRes$cells[cuts_index,]$pseudotime
+# }
+
+
+# same thing as original find_cuts_by_similarity, but code is easier to understand
+
 #' Returns cuts to define epochs
 #'
-#' Returns cuts to define epochs
+#' Returns cuts to define epochs via sliding window comparison
 #' 
 #' @param expDat genes-by-cells expression matrix
-#' @param dynRes individual path result of running define_epochs
+#' @param dynRes result of running findDynGenes or define_epochs
 #' @param winSize number of cells to each side to compare each cell to
+#' @param limit_to vector of genes on which to base epoch cuts, for example, limiting to TFs
 #' @param pThresh_dyn pval threshold if gene is dynamically expressed
 #'
 #' @return vector of  pseudotimes at which to cut data into epochs
 #' @export
 #'
 find_cuts_by_similarity<-function(
-	expDat,
-	dynRes,
-	winSize=5,
-	pThresh_dyn=0.05){
-	
-  # limit exp to dynamically expressed genes
-	expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
-	cat(nrow(expDat),"\n")
-	
-	# compute PCC between all cells -- just easier this way
-	xcorr = cor(expDat[,rownames(dynRes$cells)])
-	xdist = 1 - xcorr
-	mydists = rep(1, nrow(xdist)-1)
-	pShift = rep(0, nrow(xdist)-1)
-	end = nrow(xdist)
-	for(i in 2 : end-1){
-  		xi = seq(i-1 : max(1, i-winSize))
-  		yi = seq(i+1 : min(end, i+winSize))
-  		xxx = which.max( c(mean(xdist[i,xi]), mean(xdist[i,yi])))
-  		pShift[i] = c(0,1)[xxx]
-  		mydists[i] = mean(xdist[i,xi]) - mean(xdist[i,yi])
-	}
-	# the first one is bogus
-	cuts_index = which(pShift==1)
-	cuts_index = cuts_index[2:length(cuts_index)]
-	cat("Cut points: ",dynRes$cells[cuts_index,]$pseudotime, "\n")
+    expDat,
+    dynRes,
+    winSize=2,
+    limit_to=NULL,
+    pThresh_dyn=0.05){
+    
+  	# limit exp to dynamically expressed genes
+    expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
+    #cat(nrow(expDat),"\n")
+    
+    if (!is.null(limit_to)){
+    	limit_to<-intersect(limit_to,rownames(expDat))
+    	expDat<-expDat[limit_to,]
+    }
 
-	# It is kinda confusing, but we want the pt of the cell just prior to the determined cutpoint
-	# But, because of the way that this is indexed, we don't need to adjust anything
-	dynRes$cells[cuts_index,]$pseudotime
+    # compute PCC between all cells -- just easier this way
+    xcorr = cor(expDat[,rownames(dynRes$cells)])
+    pShift = rep(0, nrow(xcorr)-1)
+    end = nrow(xcorr)
+
+    for (i in 2:end-1){
+    	past = seq(i-1 : max(1, i-winSize))
+    	pastandfuture = seq(i+1 : min(end, i+winSize))
+    	closer_to = which.max( c(mean(xcorr[i,past]), mean(xcorr[i,pastandfuture])))
+    	pShift[i] = c(0,1)[closer_to]
+    }
+
+    consecutive_diffs<-diff(pShift)
+	cuts_index = which(consecutive_diffs==1)
+
+    #cat("Cut indicies: ",cuts_index, "\n")
+    cat("Cut points: ",dynRes$cells[cuts_index,]$pseudotime, "\n")
+
+    # It is kinda confusing, but we want the pt of the cell just prior to the determined cutpoint
+    # But, because of the way that this is indexed, we don't need to adjust anything
+    dynRes$cells[cuts_index,]$pseudotime
+}
+
+
+#' Returns cuts to define epochs
+#'
+#' Returns cuts to define epochs via clustering
+#' 
+#' @param expDat genes-by-cells expression matrix
+#' @param dynRes result of running findDynGenes or define_epochs
+#' @param num_epochs the number of epochs
+#' @param limit_to vector of genes on which to base epoch cuts, for example, limiting to TFs
+#' @param method what clustering method to use, either 'kmeans' or 'hierarchical'
+#' @param pThresh_dyn pval threshold if gene is dynamically expressed
+#'
+#' @return vector of  pseudotimes at which to cut data into epochs
+#' @export
+#'
+find_cuts_by_clustering<-function(expDat, 
+									dynRes, 
+									num_epochs,
+									limit_to=NULL,
+									method="kmeans",
+									pThresh_dyn=0.05){
+
+	expDat<-expDat[names(dynRes$genes[dynRes$genes<pThresh_dyn]),]
+    #cat(nrow(expDat),"\n")
+
+    if (!is.null(limit_to)){
+    	limit_to<-intersect(limit_to,rownames(expDat))
+    	expDat<-expDat[limit_to,]
+    }
+
+    if (method=="kmeans"){
+    	clustering<-kmeans(t(expDat),num_epochs,iter.max=100)$cluster
+    	
+    	cuts<-c()
+    	for (cluster in unique(clustering)){
+    		cells<-names(clustering)[clustering==cluster]
+    		cuts<-c(cuts,max(dynRes$cells$pseudotime[rownames(dynRes$cells) %in% cells]))
+    	}
+    	cuts<-sort(cuts)
+    	cuts<-cuts[1:length(cuts)-1]
+    }else if (method=="hierarchical"){
+    	clustering<-hclust(dist(t(expDat)),method="centroid")
+    	clusterCut <- cutree(clustering, 3)
+    	cuts<-c()
+    	for (cluster in unique(clusterCut)){
+    		cells<-names(clusterCut)[clusterCut==cluster]
+    		cuts<-c(cuts,max(dynRes$cells$pseudotime[rownames(dynRes$cells) %in% cells]))
+    	}
+    	cuts<-sort(cuts)
+    	cuts<-cuts[1:length(cuts)-1]
+    }else{
+    	stop("method must be either 'kmeans' or 'hierarchical'.")
+    }
+
+    cat("Cut points: ",cuts, "\n")
+    cuts
 }
 
 
