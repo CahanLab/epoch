@@ -9,7 +9,9 @@ findDynGenes(
   sampTab,
   path = NULL,
   group_column = "dpt_groups",
-  pseudotime_column = "pseudotime"
+  pseudotime_column = "pseudotime",
+  method = "gam",
+  expRaw = NULL
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ findDynGenes(
 \item{group_column}{column name in sampTab annotating groups in the path}
 
 \item{pseudotime_column}{column name in sampTab annotating pseudotime or latent time}
+
+\item{method}{method to find dynamic genes. Defaults to "gam", if "tradeseq", must provide expRaw}
+
+\item{expRaw}{raw expression matrix, required if method="tradeseq"}
 }
 \value{
 pvals and cell info
