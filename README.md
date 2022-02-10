@@ -5,7 +5,9 @@ Dynamic gene regulatory network reconstruction from scRNA-seq data.
 ## Introduction
 Epoch leverages single-cell transcriptomic data, single-cell analysis methods, and graph theoretic approaches to reconstruct dynamic GRNs. Additionally, Epoch contains functionality for top regulator prediction, network comparision, signaling pathway integration, amongst others. Here we show some examples of Epoch in action.
 
-For a more in depth look at Epoch, and to see how we applied it to elucidate signaling-induced GRN topology changes in early mouse embryonic stem cell (ESC) directed differentiation, check out our [preprint here](https://www.biorxiv.org/content/10.1101/2021.05.06.443021v2).
+For a more in depth look at Epoch, and to see how we applied it to elucidate signaling-induced GRN topology changes in early mouse embryonic stem cell (ESC) directed differentiation, check out our [publication here][1].
+
+[1]: https://www.cell.com/stem-cell-reports/fulltext/S2213-6711(21)00657-3
 
 
 1. [Setup](#setup)
@@ -17,7 +19,6 @@ For a more in depth look at Epoch, and to see how we applied it to elucidate sig
 
 ## Setup <a name="setup"></a>
 ```R
-
 devtools::install_github("pcahan1/epoch")
 library(epoch)
 
@@ -29,7 +30,7 @@ library(epoch)
 
 Epoch reconstructs networks from single-cell RNA-sequencing data. 
 
-This data is unpublished data from our lab. It is sampled from day 0 through day 4 mESC directed differentiation toward mesodermal fate guided by Wnt3a, Activin A, and GSKi. It has already been normalized, and the varying genes have been identified. It has also been clustered, and analyzed with RNA Velocity.
+This data is sampled from day 0 through day 4 mESC directed differentiation toward mesodermal fate guided by Wnt3a, Activin A, and GSKi. It has already been normalized, and the varying genes have been identified. It has also been clustered, and analyzed with RNA Velocity.
 
 ### Load data
 ```R
@@ -48,6 +49,8 @@ mmTFs<-intersect(rownames(expDat),mmTFs)
 # are supported here. Future versions may require some adjustment.
 
 ```
+Now, expDat contains the normalized and log-transformed gene-by-cell expression data, and sampTab contains the corresponding metadata, including pseudotime annotation.
+
 
 ### Static Network Reconstruction
 Reconstruction occurs in three steps: 
